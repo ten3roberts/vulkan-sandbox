@@ -1,9 +1,8 @@
-use std::ffi::CString;
-
 use crate::Error;
 use ash::{version::EntryV1_0, version::InstanceV1_0, Instance};
 use ash::{vk, Entry};
 use glfw::Glfw;
+use std::ffi::{CStr, CString};
 
 /// Creates a vulkan instance with the appropriate extensions and layers
 pub fn create(
@@ -27,6 +26,13 @@ pub fn create(
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
+    // Ensure extensions are present
+    let missing = get_missing_extensions(entry, &extensions)?;
+
+    if !missing.is_empty() {
+        return Err(Error::MissingExtensions(missing));
+    }
+
     let extension_names_raw = extensions
         .iter()
         .map(|ext| ext.as_ptr() as *const i8)
@@ -42,4 +48,23 @@ pub fn create(
 
 pub fn destroy(instance: Instance) {
     unsafe { instance.destroy_instance(None) };
+}
+
+/// Returns Ok or a Vec of missing extensions
+fn get_missing_extensions(
+    entry: &Entry,
+    extensions: &[CString],
+) -> Result<Vec<CString>, vk::Result> {
+    let available = entry.enumerate_instance_extension_properties()?;
+
+    Ok(extensions
+        .iter()
+        .filter(|ext| {
+            available
+                .iter()
+                .find(|avail| unsafe { CStr::from_ptr(avail.extension_name.as_ptr()) == ext.as_c_str() })
+                .is_none()
+        })
+        .cloned()
+        .collect())
 }

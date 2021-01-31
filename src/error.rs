@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -10,4 +12,6 @@ pub enum Error {
     VulkanUnsupported,
     #[error("Vulkan Instance creation error")]
     InstanceError(#[from] ash::InstanceError),
+    #[error("Missing required extensions: {0:?}")]
+    MissingExtensions(Vec<CString>)
 }

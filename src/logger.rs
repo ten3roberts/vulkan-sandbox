@@ -1,7 +1,6 @@
-use std::io::Write;
-use std::{fs::File, io};
-
 use log::*;
+use std::io;
+use std::io::Write;
 
 struct Logger;
 
@@ -15,14 +14,14 @@ fn loglevel_ansi_color(level: Level) -> &'static str {
     }
 }
 
-#[cfg(Release)]
-const level_filter: LevelFilter = LevelFilter::Info;
-#[cfg(Debug)]
-const level_filter: LevelFilter = LevelFilter::Info;
+#[cfg(not(debug_assertions))]
+const LEVEL_FILTER: LevelFilter = LevelFilter::Info;
+#[cfg(debug_assertions)]
+const LEVEL_FILTER: LevelFilter = LevelFilter::Debug;
 
 impl log::Log for Logger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Info
+    fn enabled(&self, _metadata: &Metadata) -> bool {
+        true
     }
 
     #[cfg(not(debug_assertions))]
@@ -90,6 +89,6 @@ static LOGGER: Logger = Logger;
 
 pub fn init() {
     log::set_logger(&LOGGER)
-        .map(|()| log::set_max_level(LevelFilter::Info))
+        .map(|()| log::set_max_level(LEVEL_FILTER))
         .expect("Failed to init logger");
 }

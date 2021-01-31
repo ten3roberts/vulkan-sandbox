@@ -7,11 +7,6 @@ use glfw;
 
 fn main() -> Result<(), Box<dyn Error>> {
     logger::init();
-    info!("Info");
-    debug!("Debug");
-    warn!("Warning");
-    error!("Error");
-    trace!("Trace");
 
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS)?;
 
