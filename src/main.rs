@@ -1,3 +1,4 @@
+use log::*;
 use std::error::Error;
 
 use vulkan::*;
@@ -5,6 +6,13 @@ use vulkan::*;
 use glfw;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    logger::init();
+    info!("Info");
+    debug!("Debug");
+    warn!("Warning");
+    error!("Error");
+    trace!("Trace");
+
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS)?;
 
     // Dont initialize opengl context
@@ -19,6 +27,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Seup vulkan
     let entry = entry::create()?;
     let instance = instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
+
+    info!("Created vulkan instance");
 
     while !window.should_close() {
         glfw.poll_events();
