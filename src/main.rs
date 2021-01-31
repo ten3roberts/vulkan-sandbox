@@ -23,8 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let entry = entry::create()?;
     let instance = instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
     let (debug_utils, debug_messenger) = debug_utils::create(&entry, &instance)?;
-
-    info!("Created vulkan instance");
+    let (device, _queue_families) = device::create(&instance, instance::INSTANCE_LAYERS)?;
 
     while !window.should_close() {
         glfw.poll_events();
@@ -37,6 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    device::destroy(device);
     debug_utils::destroy(&debug_utils, debug_messenger);
     instance::destroy(instance);
 

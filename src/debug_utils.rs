@@ -1,6 +1,5 @@
 use crate::Error;
 use ash::extensions::ext::DebugUtils;
-use ash::version::{EntryV1_0, InstanceV1_0};
 use ash::vk;
 use ash::vk::DebugUtilsMessengerEXT;
 use ash::Entry;
@@ -51,7 +50,9 @@ unsafe extern "system" fn debug_callback(
         vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => warn!("{}", msg),
         vk::DebugUtilsMessageSeverityFlagsEXT::INFO => info!("{}", msg),
         vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => trace!("{}", msg),
-        _ => {panic!("Unexhaustive match")}
+        _ => {
+            panic!("Unexhaustive match")
+        }
     };
     vk::FALSE
 }

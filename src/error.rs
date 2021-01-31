@@ -16,4 +16,6 @@ pub enum Error {
     MissingExtensions(Vec<CString>),
     #[error("Missing required instance layers: {0:?}")]
     MissingLayers(Vec<CString>),
+    #[error("No suitable physical device was found")]
+    UnsuitableDevice,
 }

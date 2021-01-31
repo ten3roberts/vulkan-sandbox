@@ -5,14 +5,14 @@ use glfw::Glfw;
 use std::ffi::{CStr, CString};
 
 #[cfg(debug_assertions)]
-const INSTANCE_LAYERS: &'static [&str] = &["VK_LAYER_KHRONOS_validation"];
+pub const INSTANCE_LAYERS: &'static [&str] = &["VK_LAYER_KHRONOS_validation"];
 #[cfg(debug_assertions)]
-const INSTANCE_EXTENSIONS: &'static [&str] = &["VK_EXT_debug_utils"];
+pub const INSTANCE_EXTENSIONS: &'static [&str] = &["VK_EXT_debug_utils"];
 
 #[cfg(not(debug_assertions))]
-const INSTANCE_LAYERS: &'static [&str] = &[];
+pub const INSTANCE_LAYERS: &'static [&str] = &[];
 #[cfg(not(debug_assertions))]
-const INSTANCE_EXTENSIONS: &'static [&str] = &[];
+pub const INSTANCE_EXTENSIONS: &'static [&str] = &[];
 
 /// Creates a vulkan instance with the appropriate extensions and layers
 pub fn create(
