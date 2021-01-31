@@ -13,5 +13,7 @@ pub enum Error {
     #[error("Vulkan Instance creation error")]
     InstanceError(#[from] ash::InstanceError),
     #[error("Missing required extensions: {0:?}")]
-    MissingExtensions(Vec<CString>)
+    MissingExtensions(Vec<CString>),
+    #[error("Missing required instance layers: {0:?}")]
+    MissingLayers(Vec<CString>),
 }

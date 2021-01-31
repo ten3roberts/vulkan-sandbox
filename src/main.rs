@@ -22,6 +22,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Seup vulkan
     let entry = entry::create()?;
     let instance = instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
+    let (debug_utils, debug_messenger) = debug_utils::create(&entry, &instance)?;
 
     info!("Created vulkan instance");
 
@@ -36,6 +37,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    debug_utils::destroy(&debug_utils, debug_messenger);
     instance::destroy(instance);
 
     Ok(())
