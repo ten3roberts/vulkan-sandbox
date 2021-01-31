@@ -1,5 +1,7 @@
 use std::error::Error;
 
+use vulkan::*;
+
 use glfw;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -14,6 +16,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     window.set_all_polling(true);
 
+    // Seup vulkan
+    let entry = entry::create()?;
+    let instance = instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
+
     while !window.should_close() {
         glfw.poll_events();
 
@@ -24,5 +30,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
+
+    instance::destroy(instance);
+
     Ok(())
 }
