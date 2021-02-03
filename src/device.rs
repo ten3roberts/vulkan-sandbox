@@ -1,8 +1,11 @@
 use crate::Error;
-use ash::vk;
-use ash::{version::DeviceV1_0, version::InstanceV1_0};
 use ash::Instance;
-use std::ffi::CString;
+use ash::{
+    extensions::khr::Surface,
+    vk::{self, SurfaceKHR},
+};
+use ash::{version::DeviceV1_0, version::InstanceV1_0};
+use std::{collections::HashSet, ffi::CString};
 
 pub struct QueueFamilies {
     graphics: Option<u32>,
@@ -11,7 +14,12 @@ pub struct QueueFamilies {
 }
 
 impl QueueFamilies {
-    pub fn find(instance: &Instance, device: vk::PhysicalDevice) -> QueueFamilies {
+    pub fn find(
+        instance: &Instance,
+        device: vk::PhysicalDevice,
+        surface_loader: &Surface,
+        surface: SurfaceKHR,
+    ) -> Result<QueueFamilies, Error> {
         let family_properties =
             unsafe { instance.get_physical_device_queue_family_properties(device) };
         let mut queue_families = QueueFamilies {
@@ -25,12 +33,18 @@ impl QueueFamilies {
                 queue_families.graphics = Some(i as u32);
             }
 
+            if unsafe {
+                surface_loader.get_physical_device_surface_support(device, i as u32, surface)?
+            } {
+                queue_families.present = Some(i as u32);
+            }
+
             if family.queue_flags.contains(vk::QueueFlags::TRANSFER) {
                 queue_families.transfer = Some(i as u32);
             }
         }
 
-        queue_families
+        Ok(queue_families)
     }
 
     pub fn graphics(&self) -> Option<u32> {
@@ -64,6 +78,8 @@ type Score = usize;
 fn rate_physical_device(
     instance: &Instance,
     device: vk::PhysicalDevice,
+    surface_loader: &Surface,
+    surface: SurfaceKHR,
 ) -> Option<(vk::PhysicalDevice, Score, QueueFamilies)> {
     let properties = unsafe { instance.get_physical_device_properties(device) };
     let _features = unsafe { instance.get_physical_device_features(device) };
@@ -74,10 +90,15 @@ fn rate_physical_device(
         score += 1000;
     }
 
-    let queue_families = QueueFamilies::find(instance, device);
+    let queue_families = QueueFamilies::find(instance, device, surface_loader, surface).ok()?;
 
     // Graphics queue is required
     if !queue_families.has_graphics() {
+        return None;
+    }
+
+    // Present queue is required
+    if !queue_families.has_present() {
         return None;
     }
 
@@ -88,12 +109,16 @@ fn rate_physical_device(
 }
 
 // Picks an appropriate physical device
-fn pick_physical_device(instance: &Instance) -> Result<(vk::PhysicalDevice, QueueFamilies), Error> {
+fn pick_physical_device(
+    instance: &Instance,
+    surface_loader: &Surface,
+    surface: SurfaceKHR,
+) -> Result<(vk::PhysicalDevice, QueueFamilies), Error> {
     let devices = unsafe { instance.enumerate_physical_devices()? };
 
     let (device, _, queue_families) = devices
         .into_iter()
-        .filter_map(|d| rate_physical_device(instance, d))
+        .filter_map(|d| rate_physical_device(instance, d, surface_loader, surface))
         .max_by_key(|v| v.0)
         .ok_or(Error::UnsuitableDevice)?;
 
@@ -101,13 +126,30 @@ fn pick_physical_device(instance: &Instance) -> Result<(vk::PhysicalDevice, Queu
 }
 
 /// Creates a logical device by choosing the best appropriate physical device
-pub fn create(instance: &Instance, layers: &[&str]) -> Result<(ash::Device, QueueFamilies), Error> {
-    let (physical_device, queue_families) = pick_physical_device(instance)?;
+pub fn create(
+    instance: &Instance,
+    surface_loader: &Surface,
+    surface: SurfaceKHR,
+    layers: &[&str],
+) -> Result<(ash::Device, QueueFamilies), Error> {
+    let (physical_device, queue_families) =
+        pick_physical_device(instance, surface_loader, surface)?;
 
-    let queue_create_infos = [vk::DeviceQueueCreateInfo::builder()
-        .queue_family_index(queue_families.graphics().unwrap())
-        .queue_priorities(&[1.0f32])
-        .build()];
+    let mut unique_queue_families = HashSet::new();
+    unique_queue_families.insert(queue_families.graphics().unwrap());
+    unique_queue_families.insert(queue_families.present().unwrap());
+
+    log::debug!("Unique queue families: {}", unique_queue_families.len());
+
+    let queue_create_infos: Vec<_> = unique_queue_families
+        .iter()
+        .map(|index| {
+            vk::DeviceQueueCreateInfo::builder()
+                .queue_family_index(*index)
+                .queue_priorities(&[1.0f32])
+                .build()
+        })
+        .collect();
 
     // Get layers
     let layers = layers
@@ -127,6 +169,10 @@ pub fn create(instance: &Instance, layers: &[&str]) -> Result<(ash::Device, Queu
 
     let device = unsafe { instance.create_device(physical_device, &create_info, None)? };
     Ok((device, queue_families))
+}
+
+pub fn get_queue(device: &ash::Device, family_index: u32, index: u32) -> vk::Queue {
+    unsafe { device.get_device_queue(family_index, index) }
 }
 
 pub fn destroy(device: ash::Device) {

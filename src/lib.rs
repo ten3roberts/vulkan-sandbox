@@ -4,5 +4,6 @@ pub mod entry;
 mod error;
 pub mod instance;
 pub mod logger;
+pub mod surface;
 
 pub use error::Error;

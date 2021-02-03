@@ -23,7 +23,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let entry = entry::create()?;
     let instance = instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
     let (debug_utils, debug_messenger) = debug_utils::create(&entry, &instance)?;
-    let (device, _queue_families) = device::create(&instance, instance::INSTANCE_LAYERS)?;
+    let surface_loader = surface::create_loader(&entry, &instance);
+    let surface = surface::create(&instance, &window)?;
+    let (device, queue_families) = device::create(
+        &instance,
+        &surface_loader,
+        surface,
+        instance::INSTANCE_LAYERS,
+    )?;
+
+    let _graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
+    let _present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
 
     while !window.should_close() {
         glfw.poll_events();
@@ -31,13 +41,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         for (_, event) in glfw::flush_messages(&events) {
             if let glfw::WindowEvent::CursorPos(_, _) = event {
             } else {
-                println!("Event: {:?}", event);
+                info!("Event: {:?}", event);
             }
         }
     }
 
     device::destroy(device);
     debug_utils::destroy(&debug_utils, debug_messenger);
+    surface::destroy(&surface_loader, surface);
     instance::destroy(instance);
 
     Ok(())
