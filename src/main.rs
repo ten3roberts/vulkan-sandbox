@@ -19,13 +19,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     window.set_all_polling(true);
 
-    // Seup vulkan
+    // Setup vulkan
     let entry = entry::create()?;
     let instance = instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
     let (debug_utils, debug_messenger) = debug_utils::create(&entry, &instance)?;
     let surface_loader = surface::create_loader(&entry, &instance);
     let surface = surface::create(&instance, &window)?;
-    let (device, queue_families) = device::create(
+    let (device, physical_device, queue_families) = device::create(
         &instance,
         &surface_loader,
         surface,
@@ -35,13 +35,27 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
     let _present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
 
-    while !window.should_close() {
-        glfw.poll_events();
+    let swapchain_loader = swapchain::create_loader(&instance, &device);
 
-        for (_, event) in glfw::flush_messages(&events) {
-            if let glfw::WindowEvent::CursorPos(_, _) = event {
-            } else {
-                info!("Event: {:?}", event);
+    // Limit lifetime of swapchain
+    {
+        let swapchain = swapchain::Swapchain::new(
+            &swapchain_loader,
+            &window,
+            &surface_loader,
+            surface,
+            physical_device,
+            &queue_families,
+        );
+
+        while !window.should_close() {
+            glfw.poll_events();
+
+            for (_, event) in glfw::flush_messages(&events) {
+                if let glfw::WindowEvent::CursorPos(_, _) = event {
+                } else {
+                    info!("Event: {:?}", event);
+                }
             }
         }
     }
