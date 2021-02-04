@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Limit lifetime of swapchain
     {
         let swapchain = swapchain::Swapchain::new(
+            &device,
             &swapchain_loader,
             &window,
             &surface_loader,

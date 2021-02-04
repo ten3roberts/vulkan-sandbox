@@ -2,6 +2,7 @@ pub mod debug_utils;
 pub mod device;
 pub mod entry;
 mod error;
+pub mod image_view;
 pub mod instance;
 pub mod logger;
 pub mod surface;

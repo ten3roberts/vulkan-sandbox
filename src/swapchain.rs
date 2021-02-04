@@ -6,7 +6,7 @@ use ash::Device;
 use ash::Instance;
 use std::cmp;
 
-use crate::Error;
+use crate::{image_view, Error};
 
 #[derive(Debug)]
 pub struct SwapchainSupport {
@@ -100,15 +100,18 @@ pub fn create_loader(instance: &Instance, device: &Device) -> SwapchainLoader {
 /// High level swapchain representation
 /// Implements Drop
 pub struct Swapchain<'a> {
+    device: &'a Device,
     swapchain_loader: &'a SwapchainLoader,
     swapchain_khr: vk::SwapchainKHR,
     images: Vec<vk::Image>,
+    image_views: Vec<vk::ImageView>,
     extent: vk::Extent2D,
     surface_format: vk::SurfaceFormatKHR,
 }
 
 impl<'a> Swapchain<'a> {
     pub fn new(
+        device: &'a Device,
         swapchain_loader: &'a SwapchainLoader,
         window: &glfw::Window,
         surface_loader: &Surface,
@@ -165,9 +168,17 @@ impl<'a> Swapchain<'a> {
 
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain_khr)? };
 
+        // Create image views
+        let image_views = images
+            .iter()
+            .map(|image| image_view::create(device, *image, surface_format.format))
+            .collect::<Result<_, _>>()?;
+
         Ok(Swapchain {
+            device,
             swapchain_khr,
             images,
+            image_views,
             surface_format,
             swapchain_loader,
             extent,
@@ -191,9 +202,15 @@ impl<'a> Swapchain<'a> {
 
 impl<'a> Drop for Swapchain<'a> {
     fn drop(&mut self) {
+        // Destroy image views
+        self.image_views
+            .iter()
+            .for_each(|view| image_view::destroy(self.device, *view));
+
+        // Destroy the swapchain
         unsafe {
             self.swapchain_loader
-                .destroy_swapchain(self.swapchain_khr, None)
+                .destroy_swapchain(self.swapchain_khr, None);
         };
     }
 }
