@@ -186,9 +186,12 @@ impl<'a> Swapchain<'a> {
     }
 
     // Getters
-
     pub fn images(&self) -> &[vk::Image] {
         &self.images
+    }
+
+    pub fn image_views(&self) -> &[vk::ImageView] {
+        &self.image_views
     }
 
     pub fn surface_format(&self) -> vk::SurfaceFormatKHR {

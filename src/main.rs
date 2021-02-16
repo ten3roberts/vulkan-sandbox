@@ -1,5 +1,6 @@
 use log::*;
 use std::{error::Error, fs::File};
+use vulkan::framebuffer::*;
 use vulkan::pipeline::*;
 use vulkan::renderpass::*;
 use vulkan::swapchain::*;
@@ -66,6 +67,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             &pipeline_layout,
             &renderpass,
         )?;
+
+        let framebuffers = swapchain
+            .image_views()
+            .iter()
+            .map(|view| Framebuffer::new(&device, &renderpass, &[*view], swapchain.extent()))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        info!("Framebuffer count: {:?}", framebuffers.len());
 
         while !window.should_close() {
             glfw.poll_events();
