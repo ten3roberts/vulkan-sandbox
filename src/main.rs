@@ -1,5 +1,8 @@
 use log::*;
-use std::error::Error;
+use std::{error::Error, fs::File};
+use vulkan::pipeline::*;
+use vulkan::renderpass::*;
+use vulkan::swapchain::*;
 
 use vulkan::*;
 
@@ -37,9 +40,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let swapchain_loader = swapchain::create_loader(&instance, &device);
 
+    let vs = File::open("./data/shaders/default.vert.spv")?;
+    let fs = File::open("./data/shaders/default.frag.spv")?;
+
     // Limit lifetime of swapchain
     {
-        let swapchain = swapchain::Swapchain::new(
+        let swapchain = Swapchain::new(
             &device,
             &swapchain_loader,
             &window,
@@ -47,7 +53,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             surface,
             physical_device,
             &queue_families,
-        );
+        )?;
+
+        let renderpass = RenderPass::new(&device, swapchain.surface_format().format)?;
+
+        let pipeline_layout = PipelineLayout::new(&device)?;
+        let pipeline = Pipeline::new(
+            &device,
+            vs,
+            fs,
+            swapchain.extent(),
+            &pipeline_layout,
+            &renderpass,
+        )?;
 
         while !window.should_close() {
             glfw.poll_events();

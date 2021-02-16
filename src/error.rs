@@ -19,4 +19,6 @@ pub enum Error {
     MissingLayers(Vec<CString>),
     #[error("No suitable physical device was found")]
     UnsuitableDevice,
+    #[error("IO error {0}")]
+    IOError(#[from] std::io::Error),
 }
