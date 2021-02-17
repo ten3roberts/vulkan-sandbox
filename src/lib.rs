@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod debug_utils;
 pub mod device;
 pub mod entry;
@@ -8,6 +9,7 @@ pub mod instance;
 pub mod logger;
 pub mod pipeline;
 pub mod renderpass;
+pub mod semaphore;
 pub mod surface;
 pub mod swapchain;
 

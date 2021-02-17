@@ -1,5 +1,6 @@
 use log::*;
 use std::{error::Error, fs::File};
+use vulkan::commands::*;
 use vulkan::framebuffer::*;
 use vulkan::pipeline::*;
 use vulkan::renderpass::*;
@@ -36,8 +37,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         instance::INSTANCE_LAYERS,
     )?;
 
-    let _graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
-    let _present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
+    let graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
+    let present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
 
     let swapchain_loader = swapchain::create_loader(&instance, &device);
 
@@ -76,7 +77,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         info!("Framebuffer count: {:?}", framebuffers.len());
 
+        let commandpool =
+            CommandPool::new(&device, queue_families.graphics().unwrap(), false, false)?;
+
+        let mut commandbuffers = commandpool.allocate(framebuffers.len() as _)?;
+
+        for (i, commandbuffer) in commandbuffers.iter_mut().enumerate() {
+            commandbuffer.begin()?;
+
+            commandbuffer.begin_renderpass(&renderpass, &framebuffers[i], swapchain.extent());
+            commandbuffer.bind_pipeline(&pipeline);
+            commandbuffer.draw(3, 1, 0, 0);
+            commandbuffer.end_renderpass();
+            commandbuffer.end()?;
+        }
+
+        let image_available = semaphore::create(&device)?;
+        let render_finished = semaphore::create(&device)?;
+
+        // Game loop
         while !window.should_close() {
+            // commandbuffers[image_index].
             glfw.poll_events();
 
             for (_, event) in glfw::flush_messages(&events) {
@@ -85,7 +106,23 @@ fn main() -> Result<(), Box<dyn Error>> {
                     info!("Event: {:?}", event);
                 }
             }
+
+            let image_index = swapchain.next_image(image_available)?;
+
+            // Submit command buffers
+            commandbuffers[image_index as usize].submit(
+                graphics_queue,
+                &[image_available],
+                &[render_finished],
+                &[ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+            )?;
+
+            let _suboptimal = swapchain.present(present_queue, &[render_finished], image_index)?;
+            device::wait_idle(&device)?;
         }
+
+        semaphore::destroy(&device, image_available);
+        semaphore::destroy(&device, render_finished);
     }
 
     device::destroy(device);

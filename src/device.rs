@@ -227,6 +227,11 @@ pub fn create(
     Ok((device, physical_device, queue_families))
 }
 
+pub fn wait_idle(device: &ash::Device) -> Result<(), Error> {
+    unsafe { device.device_wait_idle()? }
+    Ok(())
+}
+
 pub fn get_queue(device: &ash::Device, family_index: u32, index: u32) -> vk::Queue {
     unsafe { device.get_device_queue(family_index, index) }
 }

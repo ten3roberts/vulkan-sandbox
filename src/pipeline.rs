@@ -140,6 +140,10 @@ impl<'a> Pipeline<'a> {
 
         Ok(Pipeline { device, pipeline })
     }
+
+    pub fn pipeline(&self) -> vk::Pipeline {
+        self.pipeline
+    }
 }
 
 impl<'a> Drop for Pipeline<'a> {

@@ -29,6 +29,10 @@ impl<'a> Framebuffer<'a> {
             framebuffer,
         })
     }
+
+    pub fn framebuffer(&self) -> vk::Framebuffer {
+        self.framebuffer
+    }
 }
 
 impl<'a> Drop for Framebuffer<'a> {

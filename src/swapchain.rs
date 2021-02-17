@@ -185,6 +185,40 @@ impl<'a> Swapchain<'a> {
         })
     }
 
+    pub fn next_image(&self, semaphore: vk::Semaphore) -> Result<u32, Error> {
+        let (image_index, _) = unsafe {
+            self.swapchain_loader.acquire_next_image(
+                self.swapchain_khr,
+                std::u64::MAX,
+                semaphore,
+                vk::Fence::null(),
+            )?
+        };
+
+        Ok(image_index)
+    }
+
+    pub fn present(
+        &self,
+        queue: vk::Queue,
+        wait_semaphores: &[vk::Semaphore],
+        image_index: u32,
+    ) -> Result<bool, Error> {
+        let present_info = vk::PresentInfoKHR {
+            s_type: vk::StructureType::PRESENT_INFO_KHR,
+            p_next: std::ptr::null(),
+            wait_semaphore_count: wait_semaphores.len() as _,
+            p_wait_semaphores: wait_semaphores.as_ptr(),
+            swapchain_count: 1,
+            p_swapchains: &self.swapchain_khr,
+            p_image_indices: &image_index,
+            p_results: std::ptr::null_mut(),
+        };
+        let suboptimal = unsafe { self.swapchain_loader.queue_present(queue, &present_info)? };
+
+        Ok(suboptimal)
+    }
+
     // Getters
     pub fn images(&self) -> &[vk::Image] {
         &self.images
