@@ -10,6 +10,8 @@ use vulkan::*;
 
 use glfw;
 
+const FRAMES_IN_FLIGHT: u32 = 2;
+
 fn main() -> Result<(), Box<dyn Error>> {
     logger::init();
 
@@ -92,12 +94,32 @@ fn main() -> Result<(), Box<dyn Error>> {
             commandbuffer.end()?;
         }
 
-        let image_available = semaphore::create(&device)?;
-        let render_finished = semaphore::create(&device)?;
+        let image_available_semaphores = (0..FRAMES_IN_FLIGHT)
+            .into_iter()
+            .map(|_| semaphore::create(&device))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let render_finished_semaphores = (0..FRAMES_IN_FLIGHT)
+            .into_iter()
+            .map(|_| semaphore::create(&device))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let in_flight_fences = (0..FRAMES_IN_FLIGHT)
+            .into_iter()
+            .map(|_| fence::create(&device, true))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Fences for images in flight
+        let mut images_in_flight = swapchain
+            .images()
+            .iter()
+            .map(|_| ash::vk::Fence::null())
+            .collect::<Vec<_>>();
 
         // Game loop
+        let mut current_frame = 0;
+
         while !window.should_close() {
-            // commandbuffers[image_index].
             glfw.poll_events();
 
             for (_, event) in glfw::flush_messages(&events) {
@@ -107,22 +129,48 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
 
-            let image_index = swapchain.next_image(image_available)?;
+            fence::wait(&device, &[in_flight_fences[current_frame]], true)?;
+
+            let image_index = swapchain.next_image(image_available_semaphores[current_frame])?;
+
+            // Wait if previous frame is using this image
+            if images_in_flight[image_index as usize] != ash::vk::Fence::null() {
+                fence::wait(&device, &[images_in_flight[image_index as usize]], true)?;
+            }
+
+            // Mark the image as being used by the frame
+            images_in_flight[image_index as usize] = in_flight_fences[current_frame];
+
+            let wait_semaphores = [image_available_semaphores[current_frame]];
+            let signal_semaphores = [render_finished_semaphores[current_frame]];
+
+            // Reset fence before
+            fence::reset(&device, &[in_flight_fences[current_frame]])?;
 
             // Submit command buffers
             commandbuffers[image_index as usize].submit(
                 graphics_queue,
-                &[image_available],
-                &[render_finished],
+                &wait_semaphores,
+                &signal_semaphores,
+                in_flight_fences[current_frame],
                 &[ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
             )?;
 
-            let _suboptimal = swapchain.present(present_queue, &[render_finished], image_index)?;
+            let _suboptimal = swapchain.present(present_queue, &signal_semaphores, image_index)?;
             device::wait_idle(&device)?;
+            current_frame = (current_frame + 1) % FRAMES_IN_FLIGHT as usize;
         }
 
-        semaphore::destroy(&device, image_available);
-        semaphore::destroy(&device, render_finished);
+        image_available_semaphores
+            .iter()
+            .for_each(|s| semaphore::destroy(&device, *s));
+        render_finished_semaphores
+            .iter()
+            .for_each(|s| semaphore::destroy(&device, *s));
+
+        in_flight_fences
+            .iter()
+            .for_each(|f| fence::destroy(&device, *f));
     }
 
     device::destroy(device);

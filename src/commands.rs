@@ -170,6 +170,7 @@ impl<'a> CommandBuffer<'a> {
         queue: vk::Queue,
         wait_semaphores: &[vk::Semaphore],
         signal_semaphores: &[vk::Semaphore],
+        fence: vk::Fence,
         wait_stages: &[vk::PipelineStageFlags],
     ) -> Result<(), Error> {
         let submit_info = vk::SubmitInfo {
@@ -184,10 +185,7 @@ impl<'a> CommandBuffer<'a> {
             p_signal_semaphores: signal_semaphores.as_ptr(),
         };
 
-        unsafe {
-            self.device
-                .queue_submit(queue, &[submit_info], vk::Fence::null())
-        }?;
+        unsafe { self.device.queue_submit(queue, &[submit_info], fence) }?;
 
         Ok(())
     }
