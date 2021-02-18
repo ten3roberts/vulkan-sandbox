@@ -1,11 +1,12 @@
 use log::*;
-use std::{error::Error, fs::File};
+use std::{error::Error, fs::File, rc::Rc};
 use vulkan::commands::*;
 use vulkan::framebuffer::*;
 use vulkan::pipeline::*;
 use vulkan::renderpass::*;
 use vulkan::swapchain::*;
 
+// mod master_renderer;
 use vulkan::*;
 
 use glfw;
@@ -42,7 +43,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
     let present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
 
-    let swapchain_loader = swapchain::create_loader(&instance, &device);
+    let swapchain_loader = Rc::new(swapchain::create_loader(&instance, &device));
 
     let vs = File::open("./data/shaders/default.vert.spv")?;
     let fs = File::open("./data/shaders/default.frag.spv")?;
@@ -50,8 +51,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Limit lifetime of swapchain
     {
         let swapchain = Swapchain::new(
-            &device,
-            &swapchain_loader,
+            Rc::clone(&device),
+            Rc::clone(&swapchain_loader),
             &window,
             &surface_loader,
             surface,
@@ -59,11 +60,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             &queue_families,
         )?;
 
-        let renderpass = RenderPass::new(&device, swapchain.surface_format().format)?;
+        let renderpass = RenderPass::new(Rc::clone(&device), swapchain.surface_format().format)?;
 
-        let pipeline_layout = PipelineLayout::new(&device)?;
+        let pipeline_layout = PipelineLayout::new(Rc::clone(&device))?;
         let pipeline = Pipeline::new(
-            &device,
+            Rc::clone(&device),
             vs,
             fs,
             swapchain.extent(),
@@ -74,13 +75,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         let framebuffers = swapchain
             .image_views()
             .iter()
-            .map(|view| Framebuffer::new(&device, &renderpass, &[*view], swapchain.extent()))
+            .map(|view| {
+                Framebuffer::new(
+                    Rc::clone(&device),
+                    &renderpass,
+                    &[*view],
+                    swapchain.extent(),
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         info!("Framebuffer count: {:?}", framebuffers.len());
 
-        let commandpool =
-            CommandPool::new(&device, queue_families.graphics().unwrap(), false, false)?;
+        let commandpool = CommandPool::new(
+            Rc::clone(&device),
+            queue_families.graphics().unwrap(),
+            false,
+            false,
+        )?;
 
         let mut commandbuffers = commandpool.allocate(framebuffers.len() as _)?;
 
@@ -173,7 +185,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .for_each(|f| fence::destroy(&device, *f));
     }
 
-    device::destroy(device);
+    device::destroy(&device);
     debug_utils::destroy(&debug_utils, debug_messenger);
     surface::destroy(&surface_loader, surface);
     instance::destroy(instance);

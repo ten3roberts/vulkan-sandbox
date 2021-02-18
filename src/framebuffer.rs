@@ -1,16 +1,18 @@
+use std::rc::Rc;
+
 use crate::{renderpass::RenderPass, Error};
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
 
-pub struct Framebuffer<'a> {
-    device: &'a Device,
+pub struct Framebuffer {
+    device: Rc<Device>,
     framebuffer: vk::Framebuffer,
 }
 
-impl<'a> Framebuffer<'a> {
+impl Framebuffer {
     pub fn new(
-        device: &'a Device,
+        device: Rc<Device>,
         renderpass: &RenderPass,
         attachments: &[vk::ImageView],
         extent: vk::Extent2D,
@@ -35,7 +37,7 @@ impl<'a> Framebuffer<'a> {
     }
 }
 
-impl<'a> Drop for Framebuffer<'a> {
+impl Drop for Framebuffer {
     fn drop(&mut self) {
         unsafe { self.device.destroy_framebuffer(self.framebuffer, None) }
     }

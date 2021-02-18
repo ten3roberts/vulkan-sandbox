@@ -2,19 +2,19 @@ use super::renderpass::*;
 use crate::Error;
 use ash::version::DeviceV1_0;
 use ash::Device;
-use std::ffi::CString;
 use std::io::{Read, Seek};
+use std::{ffi::CString, rc::Rc};
 
 use ash::vk;
 
-pub struct Pipeline<'a> {
-    device: &'a Device,
+pub struct Pipeline {
+    device: Rc<Device>,
     pipeline: vk::Pipeline,
 }
 
-impl<'a> Pipeline<'a> {
+impl Pipeline {
     pub fn new<R>(
-        device: &'a Device,
+        device: Rc<Device>,
         mut vertexshader: R,
         mut fragmentshader: R,
         extent: vk::Extent2D,
@@ -28,8 +28,8 @@ impl<'a> Pipeline<'a> {
         let vert_code = ash::util::read_spv(&mut vertexshader)?;
         let frag_code = ash::util::read_spv(&mut fragmentshader)?;
 
-        let vertexshader = create_shadermodule(device, &vert_code)?;
-        let fragmentshader = create_shadermodule(device, &frag_code)?;
+        let vertexshader = create_shadermodule(&device, &vert_code)?;
+        let fragmentshader = create_shadermodule(&device, &frag_code)?;
 
         let entrypoint = CString::new("main").unwrap();
 
@@ -146,19 +146,19 @@ impl<'a> Pipeline<'a> {
     }
 }
 
-impl<'a> Drop for Pipeline<'a> {
+impl Drop for Pipeline {
     fn drop(&mut self) {
         unsafe { self.device.destroy_pipeline(self.pipeline, None) }
     }
 }
 
-pub struct PipelineLayout<'a> {
+pub struct PipelineLayout {
     layout: vk::PipelineLayout,
-    device: &'a Device,
+    device: Rc<Device>,
 }
 
-impl<'a> PipelineLayout<'a> {
-    pub fn new(device: &'a Device) -> Result<Self, Error> {
+impl PipelineLayout {
+    pub fn new(device: Rc<Device>) -> Result<Self, Error> {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(&[])
             .push_constant_ranges(&[]);
@@ -172,7 +172,7 @@ impl<'a> PipelineLayout<'a> {
     }
 }
 
-impl<'a> Drop for PipelineLayout<'a> {
+impl Drop for PipelineLayout {
     fn drop(&mut self) {
         unsafe { self.device.destroy_pipeline_layout(self.layout, None) }
     }

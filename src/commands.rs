@@ -1,18 +1,20 @@
+use std::rc::Rc;
+
 use crate::{framebuffer::Framebuffer, pipeline::Pipeline, renderpass::RenderPass, Error};
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
 
-pub struct CommandPool<'a> {
-    device: &'a Device,
+pub struct CommandPool {
+    device: Rc<Device>,
     commandpool: vk::CommandPool,
 }
 
 /// `transient`: Commandbuffers allocated are very shortlived
 /// `reset`: Commandbuffers can be individually reset from pool
-impl<'a> CommandPool<'a> {
+impl CommandPool {
     pub fn new(
-        device: &'a Device,
+        device: Rc<Device>,
         queue_family: u32,
         transient: bool,
         reset: bool,
@@ -52,7 +54,7 @@ impl<'a> CommandPool<'a> {
         let commandbuffers = raw
             .iter()
             .map(|commandbuffer| CommandBuffer {
-                device: self.device,
+                device: self.device.clone(),
                 commandbuffer: *commandbuffer,
             })
             .collect::<Vec<_>>();
@@ -61,18 +63,18 @@ impl<'a> CommandPool<'a> {
     }
 }
 
-impl<'a> Drop for CommandPool<'a> {
+impl Drop for CommandPool {
     fn drop(&mut self) {
         unsafe { self.device.destroy_command_pool(self.commandpool, None) }
     }
 }
 
-pub struct CommandBuffer<'a> {
-    device: &'a Device,
+pub struct CommandBuffer {
+    device: Rc<Device>,
     commandbuffer: vk::CommandBuffer,
 }
 
-impl<'a> CommandBuffer<'a> {
+impl CommandBuffer {
     /// Starts recording of a commandbuffer
     pub fn begin(&mut self) -> Result<(), Error> {
         let begin_info = vk::CommandBufferBeginInfo {

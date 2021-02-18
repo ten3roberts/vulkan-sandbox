@@ -1,16 +1,18 @@
+use std::rc::Rc;
+
 use crate::Error;
 use ash::version::DeviceV1_0;
 use ash::Device;
 
 use ash::vk;
 
-pub struct RenderPass<'a> {
-    device: &'a Device,
+pub struct RenderPass {
+    device: Rc<Device>,
     renderpass: vk::RenderPass,
 }
 
-impl<'a> RenderPass<'a> {
-    pub fn new(device: &'a Device, format: vk::Format) -> Result<Self, Error> {
+impl RenderPass {
+    pub fn new(device: Rc<Device>, format: vk::Format) -> Result<Self, Error> {
         let attachments = [vk::AttachmentDescription::builder()
             .format(format)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -56,7 +58,7 @@ impl<'a> RenderPass<'a> {
     }
 }
 
-impl<'a> Drop for RenderPass<'a> {
+impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe { self.device.destroy_render_pass(self.renderpass, None) }
     }

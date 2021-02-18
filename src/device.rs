@@ -8,6 +8,7 @@ use ash::{version::DeviceV1_0, version::InstanceV1_0};
 use std::{
     collections::HashSet,
     ffi::{CStr, CString},
+    rc::Rc,
 };
 
 pub struct QueueFamilies {
@@ -177,7 +178,7 @@ pub fn create(
     surface_loader: &Surface,
     surface: SurfaceKHR,
     layers: &[&str],
-) -> Result<(ash::Device, vk::PhysicalDevice, QueueFamilies), Error> {
+) -> Result<(Rc<ash::Device>, vk::PhysicalDevice, QueueFamilies), Error> {
     let extensions = DEVICE_EXTENSIONS
         .iter()
         .map(|s| CString::new(*s))
@@ -224,7 +225,7 @@ pub fn create(
         .enabled_layer_names(&layer_names_raw);
 
     let device = unsafe { instance.create_device(physical_device, &create_info, None)? };
-    Ok((device, physical_device, queue_families))
+    Ok((Rc::new(device), physical_device, queue_families))
 }
 
 pub fn wait_idle(device: &ash::Device) -> Result<(), Error> {
@@ -236,6 +237,6 @@ pub fn get_queue(device: &ash::Device, family_index: u32, index: u32) -> vk::Que
     unsafe { device.get_device_queue(family_index, index) }
 }
 
-pub fn destroy(device: ash::Device) {
+pub fn destroy(device: &ash::Device) {
     unsafe { device.destroy_device(None) };
 }

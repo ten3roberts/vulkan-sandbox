@@ -7,10 +7,14 @@ use std::ffi::{CStr, CString};
 #[cfg(debug_assertions)]
 pub const INSTANCE_LAYERS: &'static [&str] = &["VK_LAYER_KHRONOS_validation"];
 #[cfg(debug_assertions)]
+pub const ENABLE_VALIDATION_LAYERS: bool = true;
+#[cfg(debug_assertions)]
 pub const INSTANCE_EXTENSIONS: &'static [&str] = &["VK_EXT_debug_utils"];
 
 #[cfg(not(debug_assertions))]
 pub const INSTANCE_LAYERS: &'static [&str] = &[];
+#[cfg(not(debug_assertions))]
+pub const ENABLE_VALIDATION_LAYERS: bool = false;
 #[cfg(not(debug_assertions))]
 pub const INSTANCE_EXTENSIONS: &'static [&str] = &[];
 
