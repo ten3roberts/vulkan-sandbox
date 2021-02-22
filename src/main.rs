@@ -32,13 +32,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         glfw.poll_events();
 
         for (_, event) in glfw::flush_messages(&events) {
-            if let glfw::WindowEvent::CursorPos(_, _) = event {
-            } else {
-                info!("Event: {:?}", event);
+            match event {
+                glfw::WindowEvent::CursorPos(_, _) => {}
+                glfw::WindowEvent::FramebufferSize(w, h) => {
+                    info!("Resized: {}, {}", w, h);
+                    master_renderer.hint_resize();
+                    break;
+                }
+                _ => {
+                    info!("Event: {:?}", event);
+                }
             }
         }
 
-        master_renderer.draw()?;
+        master_renderer.draw(&window)?;
     }
 
     Ok(())

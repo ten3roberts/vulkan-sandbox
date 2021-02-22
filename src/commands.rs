@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use crate::{framebuffer::Framebuffer, pipeline::Pipeline, renderpass::RenderPass, Error};
+use crate::{
+    framebuffer::Framebuffer, pipeline::Pipeline, renderpass::RenderPass, Error,
+};
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
@@ -33,7 +35,8 @@ impl CommandPool {
             .queue_family_index(queue_family)
             .flags(flags);
 
-        let commandpool = unsafe { device.create_command_pool(&create_info, None)? };
+        let commandpool =
+            unsafe { device.create_command_pool(&create_info, None)? };
 
         Ok(CommandPool {
             device,
@@ -60,6 +63,21 @@ impl CommandPool {
             .collect::<Vec<_>>();
 
         Ok(commandbuffers)
+    }
+
+    // Resets all command buffers allocated from pool
+    // `release`: Release all memory allocated back to the system, if
+    // commandbuffers are to be rerecorded, this will need to once again
+    // acquire memory
+    pub fn reset(&self, release: bool) -> Result<(), Error> {
+        let flags = if release {
+            vk::CommandPoolResetFlags::RELEASE_RESOURCES
+        } else {
+            vk::CommandPoolResetFlags::default()
+        };
+
+        unsafe { self.device.reset_command_pool(self.commandpool, flags)? }
+        Ok(())
     }
 }
 

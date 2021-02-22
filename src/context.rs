@@ -11,7 +11,7 @@ use std::rc::Rc;
 use crate::device::QueueFamilies;
 
 pub struct VulkanContext {
-    entry: ash::Entry,
+    _entry: ash::Entry,
     instance: ash::Instance,
     device: Rc<ash::Device>,
     physical_device: vk::PhysicalDevice,
@@ -28,7 +28,8 @@ pub struct VulkanContext {
 impl VulkanContext {
     pub fn new(glfw: &Glfw, window: &glfw::Window) -> Result<Self, Error> {
         let entry = entry::create()?;
-        let instance = instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
+        let instance =
+            instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
 
         // Create debug utils if validation layers are enabled
         let debug_utils = if instance::ENABLE_VALIDATION_LAYERS {
@@ -48,11 +49,13 @@ impl VulkanContext {
             instance::INSTANCE_LAYERS,
         )?;
 
-        let graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
-        let present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
+        let graphics_queue =
+            device::get_queue(&device, queue_families.graphics().unwrap(), 0);
+        let present_queue =
+            device::get_queue(&device, queue_families.present().unwrap(), 0);
 
         Ok(VulkanContext {
-            entry,
+            _entry: entry,
             instance,
             device,
             physical_device,
@@ -71,7 +74,7 @@ impl VulkanContext {
     }
 
     /// Returns a new owned reference to device
-    pub fn device_rc(&self) -> Rc<ash::Device> {
+    pub fn device_ref(&self) -> Rc<ash::Device> {
         Rc::clone(&self.device)
     }
 
