@@ -76,7 +76,7 @@ pub struct CommandBuffer {
 
 impl CommandBuffer {
     /// Starts recording of a commandbuffer
-    pub fn begin(&mut self) -> Result<(), Error> {
+    pub fn begin(&self) -> Result<(), Error> {
         let begin_info = vk::CommandBufferBeginInfo {
             s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
             p_next: std::ptr::null(),
@@ -93,7 +93,7 @@ impl CommandBuffer {
     }
 
     // Ends recording of commandbuffer
-    pub fn end(&mut self) -> Result<(), Error> {
+    pub fn end(&self) -> Result<(), Error> {
         unsafe { self.device.end_command_buffer(self.commandbuffer)? };
         Ok(())
     }
@@ -107,7 +107,7 @@ impl CommandBuffer {
     ) {
         let clear_values = [vk::ClearValue {
             color: vk::ClearColorValue {
-                float32: [0.0, 0.0, 0.5, 1.0],
+                float32: [0.0, 0.0, 0.1, 1.0],
             },
         }];
         let begin_info = vk::RenderPassBeginInfo {

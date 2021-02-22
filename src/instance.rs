@@ -81,7 +81,7 @@ pub fn create(
     Ok(instance)
 }
 
-pub fn destroy(instance: Instance) {
+pub fn destroy(instance: &Instance) {
     unsafe { instance.destroy_instance(None) };
 }
 

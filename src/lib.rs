@@ -15,3 +15,4 @@ pub mod surface;
 pub mod swapchain;
 
 pub use error::Error;
+pub mod context;
