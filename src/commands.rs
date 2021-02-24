@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::buffer::Buffer;
+use crate::buffer::{Buffer, BufferType};
 use crate::framebuffer::Framebuffer;
 use crate::pipeline::Pipeline;
 use crate::renderpass::RenderPass;
@@ -211,12 +211,33 @@ impl CommandBuffer {
         }
     }
 
-    // Issues a draw command using the currently bound resources
+    pub fn bind_indexbuffer(
+        &self,
+        indexbuffer: &Buffer,
+        offset: vk::DeviceSize,
+    ) {
+        let index_type = match indexbuffer.ty() {
+            BufferType::Vertex => vk::IndexType::NONE_KHR,
+            BufferType::Index16 => vk::IndexType::UINT16,
+            BufferType::Index32 => vk::IndexType::UINT32,
+        };
+
+        unsafe {
+            self.device.cmd_bind_index_buffer(
+                self.commandbuffer,
+                indexbuffer.buffer(),
+                offset,
+                index_type,
+            )
+        }
+    }
+
+    // Issues a draw command using the currently vertex buffer
     pub fn draw(
         &self,
         vertex_count: u32,
         instance_count: u32,
-        vertex_offset: u32,
+        first_vertex: u32,
         instance_offset: u32,
     ) {
         unsafe {
@@ -224,8 +245,29 @@ impl CommandBuffer {
                 self.commandbuffer,
                 vertex_count,
                 instance_count,
-                vertex_offset,
+                first_vertex,
                 instance_offset,
+            )
+        }
+    }
+
+    // Issues a draw command using the currently bound vertex and index buffers
+    pub fn draw_indexed(
+        &self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) {
+        unsafe {
+            self.device.cmd_draw_indexed(
+                self.commandbuffer,
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
             )
         }
     }

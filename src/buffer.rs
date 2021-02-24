@@ -6,6 +6,27 @@ use vk_mem::Allocator;
 
 use crate::{commands::*, context::VulkanContext, device, Error};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+// Defines the type of a buffer
+pub enum BufferType {
+    /// Vertex buffer
+    Vertex,
+    /// 16 bit index buffer
+    Index16,
+    /// 32 bit index buffer
+    Index32,
+    // Uniform,
+    // Instance,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+// Defines the expected usage pattern of a buffer
+pub enum BufferUsage {
+    /// Buffer data will be set once or rarely and used many times
+    /// Uses temporary staging buffers and optimizes for GPU read access
+    Staged,
+}
+
 /// Higher level construct abstracting buffer and buffer memory for index,
 /// vertex and uniform use
 /// buffer usage
@@ -14,19 +35,8 @@ pub struct Buffer {
     buffer: vk::Buffer,
     allocation: vk_mem::Allocation,
     _allocation_info: vk_mem::AllocationInfo,
-}
-
-pub enum BufferType {
-    Vertex,
-    // Index,
-    // Uniform,
-    // Instance,
-}
-
-pub enum BufferUsage {
-    /// Buffer data will be set once or rarely and used many times
-    /// Uses staging buffers and optimizes for GPU access
-    Staged,
+    ty: BufferType,
+    usage: BufferUsage,
 }
 
 impl Buffer {
@@ -40,13 +50,20 @@ impl Buffer {
     ) -> Result<Self, Error> {
         let size = data.len() * mem::size_of::<T>();
 
+        // Calculate the buffer usage flags
+        let vk_usage = match ty {
+            BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
+            BufferType::Index16 | BufferType::Index32 => {
+                vk::BufferUsageFlags::INDEX_BUFFER
+            }
+        } | match usage {
+            BufferUsage::Staged => vk::BufferUsageFlags::TRANSFER_DST,
+        };
+
         // Create the main GPU side buffer
         let buffer_info = vk::BufferCreateInfo::builder()
             .size(size as _)
-            .usage(
-                vk::BufferUsageFlags::VERTEX_BUFFER
-                    | vk::BufferUsageFlags::TRANSFER_DST,
-            )
+            .usage(vk_usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
         // Create the buffer
@@ -64,6 +81,8 @@ impl Buffer {
             buffer,
             allocation,
             _allocation_info: allocation_info,
+            ty,
+            usage,
         };
 
         // Fill the buffer with provided data
@@ -127,6 +146,16 @@ impl Buffer {
     pub fn buffer(&self) -> vk::Buffer {
         self.buffer
     }
+
+    /// Returns the buffer type
+    pub fn usage(&self) -> BufferUsage {
+        self.usage
+    }
+
+    /// Returns the buffer type
+    pub fn ty(&self) -> BufferType {
+        self.ty
+    }
 }
 
 impl Drop for Buffer {
@@ -176,7 +205,7 @@ pub fn copy(
     let region = vk::BufferCopy {
         src_offset: 0,
         dst_offset: offset,
-        size: size,
+        size,
     };
 
     commandbuffer.copy_buffer(src_buffer, dst_buffer, &[region]);

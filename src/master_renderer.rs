@@ -39,6 +39,7 @@ pub struct MasterRenderer {
     renderpass: RenderPass,
 
     vertexbuffer: Buffer,
+    indexbuffer: Buffer,
 
     current_frame: usize,
     should_resize: bool,
@@ -127,12 +128,16 @@ impl MasterRenderer {
 
         let vertices = [
             CommonVertex::new(
-                Vec3::new(0.0, -0.5, 0.0),
+                Vec3::new(-0.5, -0.5, 0.0),
                 Vec4::new(1.0, 0.0, 0.0, 0.0),
             ),
             CommonVertex::new(
-                Vec3::new(0.5, 0.5, 0.0),
+                Vec3::new(0.5, -0.5, 0.0),
                 Vec4::new(0.0, 1.0, 0.0, 0.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(0.5, 0.5, 0.0),
+                Vec4::new(0.0, 0.0, 1.0, 0.0),
             ),
             CommonVertex::new(
                 Vec3::new(-0.5, 0.5, 0.0),
@@ -147,6 +152,15 @@ impl MasterRenderer {
             &vertices,
         )?;
 
+        let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
+
+        let indexbuffer = Buffer::new(
+            context.clone(),
+            BufferType::Index16,
+            BufferUsage::Staged,
+            &indices,
+        )?;
+
         let commandbuffers = commandpool.allocate(framebuffers.len() as _)?;
 
         for (i, commandbuffer) in commandbuffers.iter().enumerate() {
@@ -159,7 +173,8 @@ impl MasterRenderer {
             );
             commandbuffer.bind_pipeline(&pipeline);
             commandbuffer.bind_vertexbuffers(0, &[&vertexbuffer]);
-            commandbuffer.draw(3, 1, 0, 0);
+            commandbuffer.bind_indexbuffer(&indexbuffer, 0);
+            commandbuffer.draw_indexed(indices.len() as _, 1, 0, 0, 0);
             commandbuffer.end_renderpass();
             commandbuffer.end()?;
         }
@@ -179,6 +194,7 @@ impl MasterRenderer {
             commandbuffers,
             renderpass,
             vertexbuffer,
+            indexbuffer,
             current_frame: 0,
             should_resize: false,
         })
