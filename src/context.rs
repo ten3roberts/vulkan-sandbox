@@ -1,8 +1,8 @@
+use crate::commands::CommandPool;
 use crate::*;
-use ash::{
-    extensions::{ext::DebugUtils, khr::Surface},
-    vk,
-};
+use ash::extensions::ext::DebugUtils;
+use ash::extensions::khr::Surface;
+use ash::vk;
 use log::info;
 
 use glfw::Glfw;
@@ -23,6 +23,11 @@ pub struct VulkanContext {
 
     graphics_queue: vk::Queue,
     present_queue: vk::Queue,
+    allocator: vk_mem::Allocator,
+
+    /// CommandPool for allocatig transfer command buffers
+    /// Wrap in option to drop early
+    transfer_pool: Option<CommandPool>,
 }
 
 impl VulkanContext {
@@ -54,6 +59,25 @@ impl VulkanContext {
         let present_queue =
             device::get_queue(&device, queue_families.present().unwrap(), 0);
 
+        let allocator_info = vk_mem::AllocatorCreateInfo {
+            physical_device,
+            device: (*device).clone(),
+            instance: instance.clone(),
+            flags: vk_mem::AllocatorCreateFlags::default(),
+            preferred_large_heap_block_size: 0, // Use default
+            frame_in_use_count: 0,
+            heap_size_limits: None,
+        };
+
+        let allocator = vk_mem::Allocator::new(&allocator_info)?;
+
+        let transfer_pool = CommandPool::new(
+            device.clone(),
+            queue_families.graphics().unwrap(),
+            true,
+            true,
+        )?;
+
         Ok(VulkanContext {
             _entry: entry,
             instance,
@@ -65,6 +89,8 @@ impl VulkanContext {
             surface,
             graphics_queue,
             present_queue,
+            allocator,
+            transfer_pool: Some(transfer_pool),
         })
     }
 
@@ -105,10 +131,25 @@ impl VulkanContext {
     pub fn instance(&self) -> &ash::Instance {
         &self.instance
     }
+
+    pub fn allocator(&self) -> &vk_mem::Allocator {
+        &self.allocator
+    }
+
+    /// Returns a commandpool that can be used to allocate for transfer
+    /// operations
+    pub fn transfer_pool(&self) -> &CommandPool {
+        &self
+            .transfer_pool
+            .as_ref()
+            .expect("Transfer pool is only None when dropped")
+    }
 }
 
 impl Drop for VulkanContext {
     fn drop(&mut self) {
+        self.allocator.destroy();
+        self.transfer_pool.take();
         info!("Destroying vulkan context");
         // Destroy the device
         device::destroy(&self.device);

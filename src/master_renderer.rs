@@ -1,8 +1,13 @@
 use ash::vk;
 use log::info;
-use vulkan::context::VulkanContext;
-use vulkan::swapchain;
+use ultraviolet::vec::*;
 use vulkan::Error;
+use vulkan::{buffer::Buffer, swapchain};
+use vulkan::{
+    buffer::{BufferType, BufferUsage},
+    vertex::*,
+};
+use vulkan::{common_vertex::CommonVertex, context::VulkanContext};
 
 use vulkan::commands::*;
 use vulkan::framebuffer::*;
@@ -33,9 +38,13 @@ pub struct MasterRenderer {
     commandbuffers: Vec<CommandBuffer>,
     renderpass: RenderPass,
 
+    vertexbuffer: Buffer,
+
     current_frame: usize,
-    context: Rc<VulkanContext>,
     should_resize: bool,
+
+    // Drop context last
+    context: Rc<VulkanContext>,
 }
 
 impl MasterRenderer {
@@ -70,6 +79,8 @@ impl MasterRenderer {
             swapchain.extent(),
             &pipeline_layout,
             &renderpass,
+            CommonVertex::binding_description(),
+            CommonVertex::attribute_descriptions(),
         )?;
 
         let framebuffers = swapchain
@@ -114,10 +125,32 @@ impl MasterRenderer {
             false,
         )?;
 
+        let vertices = [
+            CommonVertex::new(
+                Vec3::new(0.0, -0.5, 0.0),
+                Vec4::new(1.0, 0.0, 0.0, 0.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(0.5, 0.5, 0.0),
+                Vec4::new(0.0, 1.0, 0.0, 0.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(-0.5, 0.5, 0.0),
+                Vec4::new(0.0, 0.0, 1.0, 0.0),
+            ),
+        ];
+
+        let vertexbuffer = Buffer::new(
+            context.clone(),
+            BufferType::Vertex,
+            BufferUsage::Staged,
+            &vertices,
+        )?;
+
         let commandbuffers = commandpool.allocate(framebuffers.len() as _)?;
 
         for (i, commandbuffer) in commandbuffers.iter().enumerate() {
-            commandbuffer.begin()?;
+            commandbuffer.begin(Default::default())?;
 
             commandbuffer.begin_renderpass(
                 &renderpass,
@@ -125,6 +158,7 @@ impl MasterRenderer {
                 swapchain.extent(),
             );
             commandbuffer.bind_pipeline(&pipeline);
+            commandbuffer.bind_vertexbuffers(0, &[&vertexbuffer]);
             commandbuffer.draw(3, 1, 0, 0);
             commandbuffer.end_renderpass();
             commandbuffer.end()?;
@@ -144,6 +178,7 @@ impl MasterRenderer {
             commandpool,
             commandbuffers,
             renderpass,
+            vertexbuffer,
             current_frame: 0,
             should_resize: false,
         })
@@ -263,6 +298,8 @@ impl MasterRenderer {
             self.swapchain.extent(),
             &self.pipeline_layout,
             &self.renderpass,
+            CommonVertex::binding_description(),
+            CommonVertex::attribute_descriptions(),
         )?;
 
         self.framebuffers = self
@@ -284,7 +321,7 @@ impl MasterRenderer {
             self.commandpool.allocate(self.framebuffers.len() as _)?;
 
         for (i, commandbuffer) in self.commandbuffers.iter().enumerate() {
-            commandbuffer.begin()?;
+            commandbuffer.begin(Default::default())?;
 
             commandbuffer.begin_renderpass(
                 &self.renderpass,
@@ -293,6 +330,7 @@ impl MasterRenderer {
             );
 
             commandbuffer.bind_pipeline(&self.pipeline);
+            commandbuffer.bind_vertexbuffers(0, &[&self.vertexbuffer]);
             commandbuffer.draw(3, 1, 0, 0);
             commandbuffer.end_renderpass();
             commandbuffer.end()?;

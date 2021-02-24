@@ -1,11 +1,19 @@
 use std::rc::Rc;
 
-use crate::{
-    framebuffer::Framebuffer, pipeline::Pipeline, renderpass::RenderPass, Error,
-};
+use crate::buffer::Buffer;
+use crate::framebuffer::Framebuffer;
+use crate::pipeline::Pipeline;
+use crate::renderpass::RenderPass;
+use crate::Error;
+use arrayvec::ArrayVec;
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
+
+/// Maximum number of bound vertex buffers
+/// This is required to avoid dynamically allocating a list of buffers when
+/// binding
+pub const MAX_VB_BINDING: usize = 4;
 
 pub struct CommandPool {
     device: Rc<Device>,
@@ -79,6 +87,22 @@ impl CommandPool {
         unsafe { self.device.reset_command_pool(self.commandpool, flags)? }
         Ok(())
     }
+
+    // Frees a single commandbuffer
+    // It is more efficient to reset the whole pool rather than freeing all
+    // individually
+    pub fn free(&self, commandbuffer: CommandBuffer) {
+        unsafe {
+            self.device.free_command_buffers(
+                self.commandpool,
+                &[commandbuffer.commandbuffer],
+            )
+        }
+    }
+
+    pub fn device(&self) -> &ash::Device {
+        &self.device
+    }
 }
 
 impl Drop for CommandPool {
@@ -94,11 +118,14 @@ pub struct CommandBuffer {
 
 impl CommandBuffer {
     /// Starts recording of a commandbuffer
-    pub fn begin(&self) -> Result<(), Error> {
+    pub fn begin(
+        &self,
+        flags: vk::CommandBufferUsageFlags,
+    ) -> Result<(), Error> {
         let begin_info = vk::CommandBufferBeginInfo {
             s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
             p_next: std::ptr::null(),
-            flags: vk::CommandBufferUsageFlags::default(),
+            flags,
             p_inheritance_info: std::ptr::null(),
         };
 
@@ -166,6 +193,24 @@ impl CommandBuffer {
         }
     }
 
+    pub fn bind_vertexbuffers(
+        &self,
+        first_binding: u32,
+        vertexbuffers: &[&Buffer],
+    ) {
+        let buffers: ArrayVec<[vk::Buffer; MAX_VB_BINDING]> =
+            vertexbuffers.iter().map(|vb| vb.buffer()).collect();
+
+        unsafe {
+            self.device.cmd_bind_vertex_buffers(
+                self.commandbuffer,
+                first_binding,
+                &buffers,
+                &[0; MAX_VB_BINDING][0..buffers.len()],
+            )
+        }
+    }
+
     // Issues a draw command using the currently bound resources
     pub fn draw(
         &self,
@@ -182,6 +227,18 @@ impl CommandBuffer {
                 vertex_offset,
                 instance_offset,
             )
+        }
+    }
+
+    pub fn copy_buffer(
+        &self,
+        src: vk::Buffer,
+        dst: vk::Buffer,
+        regions: &[vk::BufferCopy],
+    ) {
+        unsafe {
+            self.device
+                .cmd_copy_buffer(self.commandbuffer, src, dst, regions)
         }
     }
 

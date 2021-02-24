@@ -9,6 +9,8 @@ pub enum Error {
     LoadingError,
     #[error("Vulkan Error {0}")]
     VulkanError(#[from] vk::Result),
+    #[error("Vulkan Memory Allocation Error {0}")]
+    VMAError(#[from] vk_mem::Error),
     #[error("Vulkan is not available and/or unsupported")]
     VulkanUnsupported,
     #[error("Vulkan Instance creation error")]

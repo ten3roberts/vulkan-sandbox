@@ -7,10 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+arrayvec = "0.5.2"
 ash = "0.31.0"
 glfw = { version = "0.41.0", features = [ "vulkan" ]}
 log = "0.4.14"
 thiserror = "1.0.23"
+ultraviolet = "0.7.5"
+vk-mem = "0.2.2"
 
 [build-dependencies]
 anyhow = "1.0"
