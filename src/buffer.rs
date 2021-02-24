@@ -25,6 +25,9 @@ pub enum BufferUsage {
     /// Buffer data will be set once or rarely and used many times
     /// Uses temporary staging buffers and optimizes for GPU read access
     Staged,
+    /// Buffer data will seldom be set but used many times
+    /// Uses a persistent staging buffer and optimizes for GPU read access
+    StagedPersistent,
 }
 
 /// Higher level construct abstracting buffer and buffer memory for index,
@@ -37,6 +40,10 @@ pub struct Buffer {
     _allocation_info: vk_mem::AllocationInfo,
     ty: BufferType,
     usage: BufferUsage,
+
+    // If a staging buffer is persisted
+    staging_buffer:
+        Option<(vk::Buffer, vk_mem::Allocation, vk_mem::AllocationInfo)>,
 }
 
 impl Buffer {
@@ -57,7 +64,9 @@ impl Buffer {
                 vk::BufferUsageFlags::INDEX_BUFFER
             }
         } | match usage {
-            BufferUsage::Staged => vk::BufferUsageFlags::TRANSFER_DST,
+            BufferUsage::Staged | BufferUsage::StagedPersistent => {
+                vk::BufferUsageFlags::TRANSFER_DST
+            }
         };
 
         // Create the main GPU side buffer
@@ -83,6 +92,7 @@ impl Buffer {
             _allocation_info: allocation_info,
             ty,
             usage,
+            staging_buffer: None,
         };
 
         // Fill the buffer with provided data
@@ -103,8 +113,17 @@ impl Buffer {
     where
         F: FnOnce(*mut u8),
     {
-        let (staging_buffer, staging_memory, staging_info) =
-            create_staging(self.context.allocator(), size as _)?;
+        // Create a new or reuse staging buffer
+        let (staging_buffer, staging_memory, staging_info) = match &self
+            .staging_buffer
+        {
+            Some(v) => v,
+            None => {
+                self.staging_buffer =
+                    Some(create_staging(self.context.allocator(), size as _)?);
+                self.staging_buffer.as_ref().unwrap()
+            }
+        };
 
         let mapped = staging_info.get_mapped_data();
 
@@ -114,16 +133,19 @@ impl Buffer {
         copy(
             self.context.graphics_queue(),
             self.context.transfer_pool(),
-            staging_buffer,
+            *staging_buffer,
             self.buffer,
             size as _,
             offset,
         )?;
 
-        // Destroy the staging buffer
-        self.context
-            .allocator()
-            .destroy_buffer(staging_buffer, &staging_memory)?;
+        // Destroy the staging buffer if non persistent usage
+        if self.usage != BufferUsage::StagedPersistent {
+            self.context
+                .allocator()
+                .destroy_buffer(*staging_buffer, &staging_memory)?;
+            self.staging_buffer = None;
+        }
 
         Ok(())
     }
@@ -160,10 +182,15 @@ impl Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        self.context
-            .allocator()
+        let allocator = self.context.allocator();
+        allocator
             .destroy_buffer(self.buffer, &self.allocation)
             .unwrap();
+
+        // Destroy persistent staging buffer
+        if let Some((buffer, memory, _)) = self.staging_buffer.take() {
+            allocator.destroy_buffer(buffer, &memory).unwrap();
+        }
     }
 }
 
