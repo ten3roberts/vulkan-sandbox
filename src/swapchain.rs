@@ -246,6 +246,10 @@ impl Swapchain {
     }
 
     // Getters
+
+    pub fn image_count(&self) -> u32 {
+        self.images.len() as _
+    }
     pub fn images(&self) -> &[vk::Image] {
         &self.images
     }

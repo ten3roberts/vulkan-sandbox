@@ -2,6 +2,7 @@ pub mod buffer;
 pub mod commands;
 pub mod common_vertex;
 pub mod debug_utils;
+pub mod descriptors;
 pub mod device;
 pub mod entry;
 mod error;
@@ -15,6 +16,7 @@ pub mod renderpass;
 pub mod semaphore;
 pub mod surface;
 pub mod swapchain;
+pub mod time;
 pub mod vertex;
 
 pub use error::Error;

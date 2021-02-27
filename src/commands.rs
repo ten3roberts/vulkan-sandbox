@@ -3,6 +3,7 @@ use std::rc::Rc;
 use crate::buffer::{Buffer, BufferType};
 use crate::framebuffer::Framebuffer;
 use crate::pipeline::Pipeline;
+use crate::pipeline::PipelineLayout;
 use crate::renderpass::RenderPass;
 use crate::Error;
 use arrayvec::ArrayVec;
@@ -162,7 +163,7 @@ impl CommandBuffer {
             framebuffer: framebuffer.framebuffer(),
             render_area: vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent: extent,
+                extent,
             },
             clear_value_count: clear_values.len() as _,
             p_clear_values: clear_values.as_ptr(),
@@ -217,9 +218,9 @@ impl CommandBuffer {
         offset: vk::DeviceSize,
     ) {
         let index_type = match indexbuffer.ty() {
-            BufferType::Vertex => vk::IndexType::NONE_KHR,
             BufferType::Index16 => vk::IndexType::UINT16,
             BufferType::Index32 => vk::IndexType::UINT32,
+            _ => vk::IndexType::NONE_KHR,
         };
 
         unsafe {
@@ -228,6 +229,24 @@ impl CommandBuffer {
                 indexbuffer.buffer(),
                 offset,
                 index_type,
+            )
+        }
+    }
+
+    pub fn bind_descriptor_sets(
+        &self,
+        pipeline_layout: &PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[vk::DescriptorSet],
+    ) {
+        unsafe {
+            self.device.cmd_bind_descriptor_sets(
+                self.commandbuffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline_layout.layout(),
+                first_set,
+                descriptor_sets,
+                &[],
             )
         }
     }

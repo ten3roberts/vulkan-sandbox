@@ -1,5 +1,7 @@
+use arrayvec::ArrayVec;
 use ash::vk;
 use log::info;
+use ultraviolet::mat::*;
 use ultraviolet::vec::*;
 use vulkan::Error;
 use vulkan::{buffer::Buffer, swapchain};
@@ -10,6 +12,8 @@ use vulkan::{
 use vulkan::{common_vertex::CommonVertex, context::VulkanContext};
 
 use vulkan::commands::*;
+use vulkan::descriptors;
+use vulkan::descriptors::DescriptorPool;
 use vulkan::framebuffer::*;
 use vulkan::pipeline::*;
 use vulkan::renderpass::*;
@@ -20,6 +24,12 @@ use glfw;
 use std::{fs::File, rc::Rc};
 
 const FRAMES_IN_FLIGHT: u32 = 2;
+
+#[derive(Default)]
+#[repr(C)]
+struct UniformBufferObject {
+    mvp: Mat4,
+}
 
 pub struct MasterRenderer {
     swapchain_loader: Rc<ash::extensions::khr::Swapchain>,
@@ -40,6 +50,11 @@ pub struct MasterRenderer {
 
     vertexbuffer: Buffer,
     indexbuffer: Buffer,
+    uniformbuffers: Vec<Buffer>,
+
+    set_layout: vk::DescriptorSetLayout,
+    descriptor_pool: DescriptorPool,
+    descriptor_sets: Vec<vk::DescriptorSet>,
 
     current_frame: usize,
     should_resize: bool,
@@ -72,7 +87,10 @@ impl MasterRenderer {
         let vs = File::open("./data/shaders/default.vert.spv")?;
         let fs = File::open("./data/shaders/default.frag.spv")?;
 
-        let pipeline_layout = PipelineLayout::new(context.device_ref())?;
+        let set_layout = descriptors::create_layout(context.device())?;
+        let pipeline_layout =
+            PipelineLayout::new(context.device_ref(), &[set_layout])?;
+
         let pipeline = Pipeline::new(
             context.device_ref(),
             vs,
@@ -83,6 +101,18 @@ impl MasterRenderer {
             CommonVertex::binding_description(),
             CommonVertex::attribute_descriptions(),
         )?;
+
+        let descriptor_pool = DescriptorPool::new(
+            context.device_ref(),
+            swapchain.image_count(),
+            swapchain.image_count(),
+        )?;
+
+        let allocate_layouts: ArrayVec<[_; 5]> =
+            swapchain.images().iter().map(|_| set_layout).collect();
+
+        let descriptor_sets = descriptor_pool.allocate(&allocate_layouts)?;
+        info!("Descriptor count: {}", descriptor_sets.len());
 
         let framebuffers = swapchain
             .image_views()
@@ -161,6 +191,25 @@ impl MasterRenderer {
             &indices,
         )?;
 
+        let uniformbuffers = swapchain
+            .images()
+            .iter()
+            .map(|_| {
+                Buffer::new(
+                    context.clone(),
+                    BufferType::Uniform,
+                    BufferUsage::Mapped,
+                    &UniformBufferObject {
+                        mvp: Mat4::from_translation(Vec3::new(0.0, 0.4, 0.0)),
+                    },
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        descriptor_sets.iter().enumerate().for_each(|(i, d)| {
+            descriptors::write(context.device(), *d, &uniformbuffers[i])
+        });
+
         let commandbuffers = commandpool.allocate(framebuffers.len() as _)?;
 
         for (i, commandbuffer) in commandbuffers.iter().enumerate() {
@@ -173,6 +222,11 @@ impl MasterRenderer {
             );
             commandbuffer.bind_pipeline(&pipeline);
             commandbuffer.bind_vertexbuffers(0, &[&vertexbuffer]);
+            commandbuffer.bind_descriptor_sets(
+                &pipeline_layout,
+                0,
+                &[descriptor_sets[i]],
+            );
             commandbuffer.bind_indexbuffer(&indexbuffer, 0);
             commandbuffer.draw_indexed(indices.len() as _, 1, 0, 0, 0);
             commandbuffer.end_renderpass();
@@ -195,12 +249,21 @@ impl MasterRenderer {
             renderpass,
             vertexbuffer,
             indexbuffer,
+            uniformbuffers,
             current_frame: 0,
             should_resize: false,
+
+            set_layout,
+            descriptor_pool,
+            descriptor_sets,
         })
     }
 
-    pub fn draw(&mut self, window: &glfw::Window) -> Result<(), Error> {
+    pub fn draw(
+        &mut self,
+        window: &glfw::Window,
+        elapsed: f32,
+    ) -> Result<(), Error> {
         if self.should_resize {
             self.resize(window)?;
         }
@@ -246,6 +309,19 @@ impl MasterRenderer {
 
         // Reset fence before
         fence::reset(device, &[self.in_flight_fences[self.current_frame]])?;
+
+        let uniformbuffer = &mut self.uniformbuffers[image_index as usize];
+        uniformbuffer.fill(
+            0,
+            &UniformBufferObject {
+                mvp: Mat4::from_translation(Vec3::new(
+                    elapsed.sin() * 0.5,
+                    0.0,
+                    0.0,
+                )) * Mat4::from_rotation_z(elapsed * 2.0)
+                    * Mat4::from_scale(elapsed.cos() * 0.25),
+            },
+        )?;
 
         // Submit command buffers
         self.commandbuffers[image_index as usize].submit(
@@ -360,6 +436,8 @@ impl Drop for MasterRenderer {
     fn drop(&mut self) {
         info!("Destroying master renderer");
         device::wait_idle(self.context.device()).unwrap();
+
+        descriptors::destroy_layout(self.context.device(), self.set_layout);
 
         self.image_available_semaphores
             .iter()

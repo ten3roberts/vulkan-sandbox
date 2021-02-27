@@ -1,6 +1,6 @@
 use log::*;
 use master_renderer::MasterRenderer;
-use std::{error::Error, rc::Rc};
+use std::{error::Error, rc::Rc, time::Instant};
 
 // mod master_renderer;
 use vulkan::context::VulkanContext;
@@ -28,7 +28,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut master_renderer = MasterRenderer::new(context.clone(), &window)?;
 
+    let init = Instant::now();
     while !window.should_close() {
+        let now = Instant::now();
+        let elapsed = (now - init).as_secs_f32();
+
         glfw.poll_events();
 
         for (_, event) in glfw::flush_messages(&events) {
@@ -45,7 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        master_renderer.draw(&window)?;
+        master_renderer.draw(&window, elapsed)?;
     }
 
     Ok(())

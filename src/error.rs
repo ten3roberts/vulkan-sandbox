@@ -23,4 +23,10 @@ pub enum Error {
     UnsuitableDevice,
     #[error("IO error {0}")]
     IOError(#[from] std::io::Error),
+
+    #[error("Insufficient buffer size. Trying to write {size} bytes to buffer of {max_size} bytes")]
+    BufferOverflow {
+        size: vk::DeviceSize,
+        max_size: vk::DeviceSize,
+    },
 }

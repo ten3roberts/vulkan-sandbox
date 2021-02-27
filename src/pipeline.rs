@@ -72,7 +72,7 @@ impl Pipeline {
 
         let scissors = [vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: extent,
+            extent,
         }];
 
         let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
@@ -169,19 +169,23 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new(device: Rc<Device>) -> Result<Self, Error> {
+    pub fn new(
+        device: Rc<Device>,
+        set_layouts: &[vk::DescriptorSetLayout],
+    ) -> Result<Self, Error> {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&[])
+            .set_layouts(set_layouts)
             .push_constant_ranges(&[]);
 
         let layout = unsafe {
             device.create_pipeline_layout(&pipeline_layout_info, None)?
         };
 
-        Ok(PipelineLayout {
-            device: device,
-            layout,
-        })
+        Ok(PipelineLayout { device, layout })
+    }
+
+    pub fn layout(&self) -> vk::PipelineLayout {
+        self.layout
     }
 }
 
