@@ -23,7 +23,7 @@ use vulkan::*;
 use glfw;
 use std::{fs::File, rc::Rc};
 
-const FRAMES_IN_FLIGHT: u32 = 2;
+const FRAMES_IN_FLIGHT: usize = 2;
 
 #[derive(Default)]
 #[repr(C)]
@@ -31,30 +31,99 @@ struct UniformBufferObject {
     mvp: Mat4,
 }
 
+/// Represents data needed to be duplicated for each swapchain image
+struct PerFrameData {
+    uniformbuffer: Buffer,
+    descriptor_sets: Vec<vk::DescriptorSet>,
+    commandbuffer: CommandBuffer,
+    framebuffer: Framebuffer,
+    // The fence currently associated to this image_index
+    image_in_flight: vk::Fence,
+}
+
+impl PerFrameData {
+    fn new(renderer: &MasterRenderer, index: usize) -> Result<Self, Error> {
+        let framebuffer = Framebuffer::new(
+            renderer.context.device_ref(),
+            &renderer.renderpass,
+            &[renderer.swapchain.image_views()[index]],
+            renderer.swapchain.extent(),
+        )?;
+
+        let uniformbuffer = Buffer::new(
+            renderer.context.clone(),
+            BufferType::Uniform,
+            BufferUsage::Mapped,
+            &UniformBufferObject {
+                mvp: Mat4::from_translation(Vec3::new(0.0, 0.4, 0.0)),
+            },
+        )?;
+
+        let descriptor_sets =
+            renderer.descriptor_pool.allocate(&[renderer.set_layout])?;
+
+        descriptors::write(
+            renderer.context.device(),
+            descriptor_sets[0],
+            &uniformbuffer,
+        );
+
+        // Create and record command buffers
+        let commandbuffer = renderer.commandpool.allocate(1)?.pop().unwrap();
+
+        commandbuffer.begin(Default::default())?;
+
+        commandbuffer.begin_renderpass(
+            &renderer.renderpass,
+            &framebuffer,
+            renderer.swapchain.extent(),
+        );
+        commandbuffer.bind_pipeline(&renderer.pipeline);
+        commandbuffer.bind_vertexbuffers(0, &[&renderer.vertexbuffer]);
+        commandbuffer.bind_descriptor_sets(
+            &renderer.pipeline_layout,
+            0,
+            &descriptor_sets,
+        );
+
+        commandbuffer.bind_indexbuffer(&renderer.indexbuffer, 0);
+        commandbuffer.draw_indexed(6, 1, 0, 0, 0);
+        commandbuffer.end_renderpass();
+        commandbuffer.end()?;
+
+        // Construct struct
+
+        Ok(PerFrameData {
+            uniformbuffer,
+            descriptor_sets,
+            framebuffer,
+            commandbuffer,
+            image_in_flight: vk::Fence::null(),
+        })
+    }
+}
+
 pub struct MasterRenderer {
     swapchain_loader: Rc<ash::extensions::khr::Swapchain>,
     swapchain: Swapchain,
     // Framebuffers to the actual swapchain images
-    framebuffers: Vec<Framebuffer>,
     pipeline_layout: PipelineLayout,
     pipeline: Pipeline,
 
-    in_flight_fences: Vec<vk::Fence>,
-    image_available_semaphores: Vec<vk::Semaphore>,
-    render_finished_semaphores: Vec<vk::Semaphore>,
-    images_in_flight: Vec<vk::Fence>,
+    in_flight_fences: ArrayVec<[vk::Fence; FRAMES_IN_FLIGHT]>,
+    image_available_semaphores: ArrayVec<[vk::Semaphore; FRAMES_IN_FLIGHT]>,
+    render_finished_semaphores: ArrayVec<[vk::Semaphore; FRAMES_IN_FLIGHT]>,
 
     commandpool: CommandPool,
-    commandbuffers: Vec<CommandBuffer>,
     renderpass: RenderPass,
 
     vertexbuffer: Buffer,
     indexbuffer: Buffer,
-    uniformbuffers: Vec<Buffer>,
 
     set_layout: vk::DescriptorSetLayout,
     descriptor_pool: DescriptorPool,
-    descriptor_sets: Vec<vk::DescriptorSet>,
+
+    per_frame_data: Vec<PerFrameData>,
 
     current_frame: usize,
     should_resize: bool,
@@ -108,46 +177,20 @@ impl MasterRenderer {
             swapchain.image_count(),
         )?;
 
-        let allocate_layouts: ArrayVec<[_; 5]> =
-            swapchain.images().iter().map(|_| set_layout).collect();
-
-        let descriptor_sets = descriptor_pool.allocate(&allocate_layouts)?;
-        info!("Descriptor count: {}", descriptor_sets.len());
-
-        let framebuffers = swapchain
-            .image_views()
-            .iter()
-            .map(|view| {
-                Framebuffer::new(
-                    context.device_ref(),
-                    &renderpass,
-                    &[*view],
-                    swapchain.extent(),
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
         let image_available_semaphores = (0..FRAMES_IN_FLIGHT)
             .into_iter()
             .map(|_| semaphore::create(context.device()))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<_, _>>()?;
 
         let render_finished_semaphores = (0..FRAMES_IN_FLIGHT)
             .into_iter()
             .map(|_| semaphore::create(context.device()))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<_, _>>()?;
 
         let in_flight_fences = (0..FRAMES_IN_FLIGHT)
             .into_iter()
             .map(|_| fence::create(context.device(), true))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // Fences for images in flight
-        let images_in_flight = swapchain
-            .images()
-            .iter()
-            .map(|_| ash::vk::Fence::null())
-            .collect::<Vec<_>>();
+            .collect::<Result<_, _>>()?;
 
         let commandpool = CommandPool::new(
             context.device_ref(),
@@ -191,72 +234,34 @@ impl MasterRenderer {
             &indices,
         )?;
 
-        let uniformbuffers = swapchain
-            .images()
-            .iter()
-            .map(|_| {
-                Buffer::new(
-                    context.clone(),
-                    BufferType::Uniform,
-                    BufferUsage::Mapped,
-                    &UniformBufferObject {
-                        mvp: Mat4::from_translation(Vec3::new(0.0, 0.4, 0.0)),
-                    },
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        descriptor_sets.iter().enumerate().for_each(|(i, d)| {
-            descriptors::write(context.device(), *d, &uniformbuffers[i])
-        });
-
-        let commandbuffers = commandpool.allocate(framebuffers.len() as _)?;
-
-        for (i, commandbuffer) in commandbuffers.iter().enumerate() {
-            commandbuffer.begin(Default::default())?;
-
-            commandbuffer.begin_renderpass(
-                &renderpass,
-                &framebuffers[i],
-                swapchain.extent(),
-            );
-            commandbuffer.bind_pipeline(&pipeline);
-            commandbuffer.bind_vertexbuffers(0, &[&vertexbuffer]);
-            commandbuffer.bind_descriptor_sets(
-                &pipeline_layout,
-                0,
-                &[descriptor_sets[i]],
-            );
-            commandbuffer.bind_indexbuffer(&indexbuffer, 0);
-            commandbuffer.draw_indexed(indices.len() as _, 1, 0, 0, 0);
-            commandbuffer.end_renderpass();
-            commandbuffer.end()?;
-        }
-
-        Ok(MasterRenderer {
+        let mut master_renderer = MasterRenderer {
             context,
             swapchain_loader,
             swapchain,
-            framebuffers,
             pipeline_layout,
             pipeline,
             in_flight_fences,
             image_available_semaphores,
             render_finished_semaphores,
-            images_in_flight,
             commandpool,
-            commandbuffers,
             renderpass,
             vertexbuffer,
             indexbuffer,
-            uniformbuffers,
             current_frame: 0,
             should_resize: false,
 
             set_layout,
             descriptor_pool,
-            descriptor_sets,
-        })
+            per_frame_data: Vec::new(),
+        };
+
+        let per_frame_data = (0..master_renderer.swapchain.image_count())
+            .map(|i| PerFrameData::new(&master_renderer, i as usize))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        master_renderer.per_frame_data = per_frame_data;
+
+        Ok(master_renderer)
     }
 
     pub fn draw(
@@ -288,19 +293,15 @@ impl MasterRenderer {
             Err(e) => return Err(e.into()),
         };
 
+        let data = &mut self.per_frame_data[image_index as usize];
+
         // Wait if previous frame is using this image
-        if self.images_in_flight[image_index as usize] != ash::vk::Fence::null()
-        {
-            fence::wait(
-                device,
-                &[self.images_in_flight[image_index as usize]],
-                true,
-            )?;
+        if data.image_in_flight != ash::vk::Fence::null() {
+            fence::wait(device, &[data.image_in_flight], true)?;
         }
 
         // Mark the image as being used by the frame
-        self.images_in_flight[image_index as usize] =
-            self.in_flight_fences[self.current_frame];
+        data.image_in_flight = self.in_flight_fences[self.current_frame];
 
         let wait_semaphores =
             [self.image_available_semaphores[self.current_frame]];
@@ -310,8 +311,7 @@ impl MasterRenderer {
         // Reset fence before
         fence::reset(device, &[self.in_flight_fences[self.current_frame]])?;
 
-        let uniformbuffer = &mut self.uniformbuffers[image_index as usize];
-        uniformbuffer.fill(
+        data.uniformbuffer.fill(
             0,
             &UniformBufferObject {
                 mvp: Mat4::from_translation(Vec3::new(
@@ -324,7 +324,7 @@ impl MasterRenderer {
         )?;
 
         // Submit command buffers
-        self.commandbuffers[image_index as usize].submit(
+        data.commandbuffer.submit(
             self.context.graphics_queue(),
             &wait_semaphores,
             &signal_semaphores,
@@ -394,39 +394,25 @@ impl MasterRenderer {
             CommonVertex::attribute_descriptions(),
         )?;
 
-        self.framebuffers = self
-            .swapchain
-            .image_views()
-            .iter()
-            .map(|view| {
-                Framebuffer::new(
-                    self.context.device_ref(),
-                    &self.renderpass,
-                    &[*view],
-                    self.swapchain.extent(),
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
         self.commandpool.reset(false)?;
-        self.commandbuffers =
-            self.commandpool.allocate(self.framebuffers.len() as _)?;
+        // self.commandbuffers =
+        //     self.commandpool.allocate(self.framebuffers.len() as _)?;
 
-        for (i, commandbuffer) in self.commandbuffers.iter().enumerate() {
-            commandbuffer.begin(Default::default())?;
+        // for (i, commandbuffer) in self.commandbuffers.iter().enumerate() {
+        //     commandbuffer.begin(Default::default())?;
 
-            commandbuffer.begin_renderpass(
-                &self.renderpass,
-                &self.framebuffers[i],
-                self.swapchain.extent(),
-            );
+        // commandbuffer.begin_renderpass(
+        //     &self.renderpass,
+        //     &self.framebuffers[i],
+        //     self.swapchain.extent(),
+        // );
 
-            commandbuffer.bind_pipeline(&self.pipeline);
-            commandbuffer.bind_vertexbuffers(0, &[&self.vertexbuffer]);
-            commandbuffer.draw(3, 1, 0, 0);
-            commandbuffer.end_renderpass();
-            commandbuffer.end()?;
-        }
+        // commandbuffer.bind_pipeline(&self.pipeline);
+        // commandbuffer.bind_vertexbuffers(0, &[&self.vertexbuffer]);
+        // commandbuffer.draw(3, 1, 0, 0);
+        // commandbuffer.end_renderpass();
+        // commandbuffer.end()?;
+        // }
 
         Ok(())
     }
