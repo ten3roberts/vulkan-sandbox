@@ -31,8 +31,12 @@ pub enum BufferUsage {
     StagedPersistent,
 
     /// Buffer data is often updated and frequently used
-    /// Uses host coherent mapped memory
+    /// Uses temporarily mapped host memory
     Mapped,
+
+    /// Buffer data is very often updated and frequently used
+    /// Uses persistently mapped memory
+    MappedPersistent,
 }
 
 /// Higher level construct abstracting buffer and buffer memory for index,
@@ -73,7 +77,9 @@ impl Buffer {
                 vk::BufferUsageFlags::INDEX_BUFFER
             }
         } | match usage {
-            BufferUsage::Mapped => vk::BufferUsageFlags::default(),
+            BufferUsage::Mapped | BufferUsage::MappedPersistent => {
+                vk::BufferUsageFlags::default()
+            }
             BufferUsage::Staged | BufferUsage::StagedPersistent => {
                 vk::BufferUsageFlags::TRANSFER_DST
             }
@@ -83,7 +89,16 @@ impl Buffer {
             BufferUsage::Staged | BufferUsage::StagedPersistent => {
                 vk_mem::MemoryUsage::GpuOnly
             }
-            BufferUsage::Mapped => vk_mem::MemoryUsage::CpuToGpu,
+            BufferUsage::Mapped | BufferUsage::MappedPersistent => {
+                vk_mem::MemoryUsage::CpuToGpu
+            }
+        };
+
+        let flags = match usage {
+            BufferUsage::MappedPersistent => {
+                vk_mem::AllocationCreateFlags::MAPPED
+            }
+            _ => vk_mem::AllocationCreateFlags::NONE,
         };
 
         // Create the main GPU side buffer
@@ -99,6 +114,7 @@ impl Buffer {
             &buffer_info,
             &vk_mem::AllocationCreateInfo {
                 usage: memory_usage,
+                flags,
                 ..Default::default()
             },
         )?;
@@ -144,14 +160,40 @@ impl Buffer {
             BufferUsage::StagedPersistent => {
                 self.write_staged_persistent(offset, write_func)
             }
-            BufferUsage::Mapped => self.write_mapped(size, offset, write_func),
+            BufferUsage::Mapped => self.write_mapped(offset, write_func),
+            BufferUsage::MappedPersistent => {
+                self.write_mapped_persistent(size, offset, write_func)
+            }
         }
     }
 
     // Updates memory by mapping and unmapping
-    fn write_mapped<F>(
+    // Will map the whole buffer
+    fn write_mapped_persistent<F>(
         &self,
         size: vk::DeviceSize,
+        offset: vk::DeviceSize,
+        write_func: F,
+    ) -> Result<(), Error>
+    where
+        F: FnOnce(*mut u8),
+    {
+        let allocator = self.context.allocator();
+        let mapped = self.allocation_info.get_mapped_data();
+
+        unsafe {
+            write_func(mapped.offset(offset as _));
+        }
+
+        allocator.flush_allocation(&self.allocation, offset as _, size as _)?;
+
+        Ok(())
+    }
+
+    // Updates memory by mapping and unmapping
+    // Will map the whole buffer
+    fn write_mapped<F>(
+        &self,
         offset: vk::DeviceSize,
         write_func: F,
     ) -> Result<(), Error>
@@ -180,7 +222,7 @@ impl Buffer {
     {
         let allocator = self.context.allocator();
         // Create a new or reuse staging buffer
-        let (staging_buffer, staging_memory, staging_info) =
+        let (staging_buffer, staging_allocation, staging_info) =
             create_staging(allocator, size as _, true)?;
 
         let mapped = staging_info.get_mapped_data();
@@ -198,7 +240,7 @@ impl Buffer {
         )?;
 
         // Destroy the staging buffer
-        allocator.destroy_buffer(staging_buffer, &staging_memory)?;
+        allocator.destroy_buffer(staging_buffer, &staging_allocation)?;
 
         Ok(())
     }

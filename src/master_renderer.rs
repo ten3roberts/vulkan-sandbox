@@ -53,7 +53,7 @@ impl PerFrameData {
         let uniformbuffer = Buffer::new(
             renderer.context.clone(),
             BufferType::Uniform,
-            BufferUsage::Mapped,
+            BufferUsage::MappedPersistent,
             &UniformBufferObject {
                 mvp: Mat4::from_translation(Vec3::new(0.0, 0.4, 0.0)),
             },

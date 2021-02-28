@@ -148,9 +148,13 @@ impl VulkanContext {
 
 impl Drop for VulkanContext {
     fn drop(&mut self) {
-        self.allocator.destroy();
-        self.transfer_pool.take();
         info!("Destroying vulkan context");
+        // Destroy the allocator
+        self.allocator.destroy();
+
+        // Destroy the transfer pool before device destruction
+        self.transfer_pool.take();
+
         // Destroy the device
         device::destroy(&self.device);
 
