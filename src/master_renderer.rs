@@ -125,6 +125,7 @@ pub struct MasterRenderer {
 
     per_frame_data: Vec<PerFrameData>,
 
+    // The current frame-in-flight index
     current_frame: usize,
     should_resize: bool,
 
@@ -255,109 +256,23 @@ impl MasterRenderer {
             per_frame_data: Vec::new(),
         };
 
-        let per_frame_data = (0..master_renderer.swapchain.image_count())
-            .map(|i| PerFrameData::new(&master_renderer, i as usize))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        master_renderer.per_frame_data = per_frame_data;
+        master_renderer.per_frame_data =
+            (0..master_renderer.swapchain.image_count())
+                .map(|i| PerFrameData::new(&master_renderer, i as usize))
+                .collect::<Result<Vec<_>, _>>()?;
 
         Ok(master_renderer)
     }
 
-    pub fn draw(
-        &mut self,
-        window: &glfw::Window,
-        elapsed: f32,
-    ) -> Result<(), Error> {
-        if self.should_resize {
-            self.resize(window)?;
-        }
-
-        let device = self.context.device();
-        fence::wait(
-            device,
-            &[self.in_flight_fences[self.current_frame]],
-            true,
-        )?;
-
-        let image_index = match self
-            .swapchain
-            .next_image(self.image_available_semaphores[self.current_frame])
-        {
-            Ok(image_index) => image_index,
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.hint_resize();
-                return Ok(());
-            }
-
-            Err(e) => return Err(e.into()),
-        };
-
-        let data = &mut self.per_frame_data[image_index as usize];
-
-        // Wait if previous frame is using this image
-        if data.image_in_flight != ash::vk::Fence::null() {
-            fence::wait(device, &[data.image_in_flight], true)?;
-        }
-
-        // Mark the image as being used by the frame
-        data.image_in_flight = self.in_flight_fences[self.current_frame];
-
-        let wait_semaphores =
-            [self.image_available_semaphores[self.current_frame]];
-        let signal_semaphores =
-            [self.render_finished_semaphores[self.current_frame]];
-
-        // Reset fence before
-        fence::reset(device, &[self.in_flight_fences[self.current_frame]])?;
-
-        data.uniformbuffer.fill(
-            0,
-            &UniformBufferObject {
-                mvp: Mat4::from_translation(Vec3::new(
-                    elapsed.sin() * 0.5,
-                    0.0,
-                    0.0,
-                )) * Mat4::from_rotation_z(elapsed * 2.0)
-                    * Mat4::from_scale(elapsed.cos() * 0.25),
-            },
-        )?;
-
-        // Submit command buffers
-        data.commandbuffer.submit(
-            self.context.graphics_queue(),
-            &wait_semaphores,
-            &signal_semaphores,
-            self.in_flight_fences[self.current_frame],
-            &[ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
-        )?;
-
-        let _suboptimal = match self.swapchain.present(
-            self.context.present_queue(),
-            &signal_semaphores,
-            image_index,
-        ) {
-            Ok(image_index) => image_index,
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.hint_resize();
-                return Ok(());
-            }
-
-            Err(e) => return Err(e.into()),
-        };
-
-        device::wait_idle(device)?;
-        self.current_frame =
-            (self.current_frame + 1) % FRAMES_IN_FLIGHT as usize;
-
-        Ok(())
-    }
-
-    pub fn hint_resize(&mut self) {
+    // Called when window is resized
+    // Does not recreate the renderer immediately but waits for next frame
+    pub fn on_resize(&mut self) {
         self.should_resize = true;
     }
 
+    // Does the resizing
     fn resize(&mut self, window: &glfw::Window) -> Result<(), Error> {
+        log::debug!("Resizing");
         self.should_resize = false;
 
         device::wait_idle(self.context.device())?;
@@ -395,24 +310,113 @@ impl MasterRenderer {
         )?;
 
         self.commandpool.reset(false)?;
-        // self.commandbuffers =
-        //     self.commandpool.allocate(self.framebuffers.len() as _)?;
 
-        // for (i, commandbuffer) in self.commandbuffers.iter().enumerate() {
-        //     commandbuffer.begin(Default::default())?;
+        self.descriptor_pool.reset()?;
 
-        // commandbuffer.begin_renderpass(
-        //     &self.renderpass,
-        //     &self.framebuffers[i],
-        //     self.swapchain.extent(),
+        log::debug!("Recreating per frame data");
+        self.per_frame_data = (0..self.swapchain.image_count())
+            .map(|i| PerFrameData::new(&self, i as usize))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(())
+    }
+
+    pub fn draw(
+        &mut self,
+        window: &glfw::Window,
+        elapsed: f32,
+        dt: f32,
+    ) -> Result<(), Error> {
+        if self.should_resize {
+            self.resize(window)?;
+        }
+
+        let device = self.context.device();
+
+        // Wait for current_frame to not be in use
+        fence::wait(
+            device,
+            &[self.in_flight_fences[self.current_frame]],
+            true,
+        )?;
+
+        // Acquire the next image from swapchain
+        let image_index = match self
+            .swapchain
+            .next_image(self.image_available_semaphores[self.current_frame])
+        {
+            Ok(image_index) => image_index,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                self.on_resize();
+                return Ok(());
+            }
+
+            Err(e) => return Err(e.into()),
+        };
+
+        // log::info!(
+        //     "Drawing frame: currentFrame: {}, image_index: {}",
+        //     self.current_frame,
+        //     image_index
         // );
 
-        // commandbuffer.bind_pipeline(&self.pipeline);
-        // commandbuffer.bind_vertexbuffers(0, &[&self.vertexbuffer]);
-        // commandbuffer.draw(3, 1, 0, 0);
-        // commandbuffer.end_renderpass();
-        // commandbuffer.end()?;
-        // }
+        // Extract data for this image in swapchain
+        let data = &mut self.per_frame_data[image_index as usize];
+
+        // Wait if previous frame is using this image
+        if data.image_in_flight != ash::vk::Fence::null() {
+            fence::wait(device, &[data.image_in_flight], true)?;
+        }
+
+        // Mark the image as being used by the frame in flight
+        data.image_in_flight = self.in_flight_fences[self.current_frame];
+
+        let wait_semaphores =
+            [self.image_available_semaphores[self.current_frame]];
+
+        let signal_semaphores =
+            [self.render_finished_semaphores[self.current_frame]];
+
+        // Reset fence before
+        fence::reset(device, &[self.in_flight_fences[self.current_frame]])?;
+
+        data.uniformbuffer.fill(
+            0,
+            &UniformBufferObject {
+                mvp: Mat4::from_translation(Vec3::new(
+                    elapsed.sin() * 0.5,
+                    0.0,
+                    0.0,
+                )) * Mat4::from_rotation_z(elapsed * 2.0)
+                    * Mat4::from_scale(elapsed.cos() * 0.25),
+            },
+        )?;
+
+        // Submit command buffers
+        data.commandbuffer.submit(
+            self.context.graphics_queue(),
+            &wait_semaphores,
+            &signal_semaphores,
+            self.in_flight_fences[self.current_frame],
+            &[ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+        )?;
+
+        let _suboptimal = match self.swapchain.present(
+            self.context.present_queue(),
+            &signal_semaphores,
+            image_index,
+        ) {
+            Ok(image_index) => image_index,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                self.on_resize();
+                return Ok(());
+            }
+
+            Err(e) => return Err(e.into()),
+        };
+
+        self.current_frame =
+            (self.current_frame + 1) % FRAMES_IN_FLIGHT as usize;
 
         Ok(())
     }
