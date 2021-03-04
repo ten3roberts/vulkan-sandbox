@@ -237,7 +237,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36f5fd4a7d6d5d19808610583131c0aed271556527cad4cb71c436831a28e059"
 
 [[package]]
-name = "vulkan"
+name = "vulkan-sandbox"
 version = "0.1.0"
 dependencies = [
  "anyhow",

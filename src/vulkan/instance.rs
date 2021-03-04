@@ -1,4 +1,4 @@
-use crate::Error;
+use super::Error;
 use ash::{version::EntryV1_0, version::InstanceV1_0, Instance};
 use ash::{vk, Entry};
 use glfw::Glfw;
@@ -98,7 +98,8 @@ fn get_missing_extensions(
             available
                 .iter()
                 .find(|avail| unsafe {
-                    CStr::from_ptr(avail.extension_name.as_ptr()) == ext.as_c_str()
+                    CStr::from_ptr(avail.extension_name.as_ptr())
+                        == ext.as_c_str()
                 })
                 .is_none()
         })
@@ -107,7 +108,10 @@ fn get_missing_extensions(
 }
 
 /// Returns a vector of missing layers
-fn get_missing_layers(entry: &Entry, layers: &[CString]) -> Result<Vec<CString>, vk::Result> {
+fn get_missing_layers(
+    entry: &Entry,
+    layers: &[CString],
+) -> Result<Vec<CString>, vk::Result> {
     let available = entry.enumerate_instance_layer_properties()?;
 
     Ok(layers

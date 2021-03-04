@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::Error;
+use super::Error;
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;

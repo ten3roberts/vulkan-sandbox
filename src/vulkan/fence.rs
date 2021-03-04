@@ -1,4 +1,4 @@
-use crate::Error;
+use super::Error;
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
@@ -18,7 +18,11 @@ pub fn create(device: &Device, signaled: bool) -> Result<vk::Fence, Error> {
     Ok(fence)
 }
 
-pub fn wait(device: &Device, fences: &[vk::Fence], wait_all: bool) -> Result<(), Error> {
+pub fn wait(
+    device: &Device,
+    fences: &[vk::Fence],
+    wait_all: bool,
+) -> Result<(), Error> {
     unsafe { device.wait_for_fences(fences, wait_all, std::u64::MAX)? }
     Ok(())
 }

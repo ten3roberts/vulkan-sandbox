@@ -4,7 +4,7 @@ use std::{mem, rc::Rc};
 use ash::vk;
 use vk_mem::Allocator;
 
-use crate::{commands::*, context::VulkanContext, device, Error};
+use super::{commands::*, context::VulkanContext, device, Error};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 // Defines the type of a buffer

@@ -3,7 +3,7 @@ use std::mem;
 use ash::vk;
 use ultraviolet::vec::*;
 
-use crate::vertex::Vertex;
+use super::vertex::Vertex;
 
 #[repr(C)]
 pub struct CommonVertex {

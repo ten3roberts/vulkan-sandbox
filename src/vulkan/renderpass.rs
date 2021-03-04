@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::Error;
+use super::Error;
 use ash::version::DeviceV1_0;
 use ash::Device;
 
@@ -48,7 +48,8 @@ impl RenderPass {
             .attachments(&attachments)
             .subpasses(&subpasses)
             .dependencies(&dependencies);
-        let renderpass = unsafe { device.create_render_pass(&create_info, None)? };
+        let renderpass =
+            unsafe { device.create_render_pass(&create_info, None)? };
 
         Ok(RenderPass { device, renderpass })
     }

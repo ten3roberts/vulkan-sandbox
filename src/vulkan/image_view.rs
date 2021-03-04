@@ -1,7 +1,7 @@
 use ash::version::DeviceV1_0;
 use ash::{vk, Device};
 
-use crate::Error;
+use super::Error;
 
 /// Creates an image view from image, format, width and height
 pub fn create(

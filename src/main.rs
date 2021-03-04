@@ -3,9 +3,11 @@ use master_renderer::MasterRenderer;
 use std::{error::Error, rc::Rc, thread, time::Duration};
 
 // mod master_renderer;
-use clock::*;
-use vulkan::context::VulkanContext;
-use vulkan::*;
+use vulkan_sandbox::clock::*;
+use vulkan_sandbox::logger;
+use vulkan_sandbox::vulkan;
+
+use vulkan::VulkanContext;
 
 use glfw;
 

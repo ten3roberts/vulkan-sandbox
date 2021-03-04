@@ -1,5 +1,5 @@
-use crate::commands::CommandPool;
-use crate::*;
+use super::commands::CommandPool;
+use super::*;
 use ash::extensions::ext::DebugUtils;
 use ash::extensions::khr::Surface;
 use ash::vk;
@@ -8,7 +8,7 @@ use log::info;
 use glfw::Glfw;
 use std::rc::Rc;
 
-use crate::device::QueueFamilies;
+use super::device::QueueFamilies;
 
 pub struct VulkanContext {
     _entry: ash::Entry,

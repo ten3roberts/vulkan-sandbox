@@ -5,7 +5,7 @@ use ash::Device;
 use ash::Instance;
 use std::{cmp, rc::Rc};
 
-use crate::{context::VulkanContext, image_view, Error};
+use super::{image_view, Error, VulkanContext};
 
 #[derive(Debug)]
 pub struct SwapchainSupport {

@@ -1,23 +1,3 @@
-pub mod buffer;
 pub mod clock;
-pub mod commands;
-pub mod common_vertex;
-pub mod debug_utils;
-pub mod descriptors;
-pub mod device;
-pub mod entry;
-mod error;
-pub mod fence;
-pub mod framebuffer;
-pub mod image_view;
-pub mod instance;
 pub mod logger;
-pub mod pipeline;
-pub mod renderpass;
-pub mod semaphore;
-pub mod surface;
-pub mod swapchain;
-pub mod vertex;
-
-pub use error::Error;
-pub mod context;
+pub mod vulkan;

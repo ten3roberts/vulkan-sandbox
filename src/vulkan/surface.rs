@@ -7,14 +7,17 @@ use ash::{
 
 use glfw::Window;
 
-use crate::Error;
+use super::Error;
 
 pub fn create_loader(entry: &Entry, instance: &Instance) -> Surface {
     Surface::new(entry, instance)
 }
 
 /// Creates a vulkan surface from window
-pub fn create(instance: &Instance, window: &Window) -> Result<SurfaceKHR, Error> {
+pub fn create(
+    instance: &Instance,
+    window: &Window,
+) -> Result<SurfaceKHR, Error> {
     let mut surface: u64 = 0_u64;
     let result = window.create_window_surface(
         instance.handle().as_raw() as _,
@@ -30,5 +33,5 @@ pub fn create(instance: &Instance, window: &Window) -> Result<SurfaceKHR, Error>
 }
 
 pub fn destroy(surface_loader: &Surface, surface: SurfaceKHR) {
-    unsafe {surface_loader.destroy_surface(surface, None)};
+    unsafe { surface_loader.destroy_surface(surface, None) };
 }
