@@ -62,8 +62,7 @@ impl PerFrameData {
             },
         )?;
 
-        let descriptor_sets =
-            renderer.descriptor_pool.allocate(&[renderer.set_layout])?;
+        let descriptor_sets = renderer.descriptor_pool.allocate(&[renderer.set_layout])?;
 
         descriptors::write(
             renderer.context.device(),
@@ -83,11 +82,7 @@ impl PerFrameData {
         );
         commandbuffer.bind_pipeline(&renderer.pipeline);
         commandbuffer.bind_vertexbuffers(0, &[&renderer.vertexbuffer]);
-        commandbuffer.bind_descriptor_sets(
-            &renderer.pipeline_layout,
-            0,
-            &descriptor_sets,
-        );
+        commandbuffer.bind_descriptor_sets(&renderer.pipeline_layout, 0, &descriptor_sets);
 
         commandbuffer.bind_indexbuffer(&renderer.indexbuffer, 0);
         commandbuffer.draw_indexed(6, 1, 0, 0, 0);
@@ -137,32 +132,21 @@ pub struct MasterRenderer {
 }
 
 impl MasterRenderer {
-    pub fn new(
-        context: Rc<VulkanContext>,
-        window: &glfw::Window,
-    ) -> Result<Self, Error> {
+    pub fn new(context: Rc<VulkanContext>, window: &glfw::Window) -> Result<Self, Error> {
         let swapchain_loader = Rc::new(swapchain::create_loader(
             context.instance(),
             context.device(),
         ));
 
-        let swapchain = Swapchain::new(
-            context.clone(),
-            Rc::clone(&swapchain_loader),
-            &window,
-        )?;
+        let swapchain = Swapchain::new(context.clone(), Rc::clone(&swapchain_loader), &window)?;
 
-        let renderpass = RenderPass::new(
-            context.device_ref(),
-            swapchain.surface_format().format,
-        )?;
+        let renderpass = RenderPass::new(context.device_ref(), swapchain.surface_format().format)?;
 
         let vs = File::open("./data/shaders/default.vert.spv")?;
         let fs = File::open("./data/shaders/default.frag.spv")?;
 
         let set_layout = descriptors::create_layout(context.device())?;
-        let pipeline_layout =
-            PipelineLayout::new(context.device_ref(), &[set_layout])?;
+        let pipeline_layout = PipelineLayout::new(context.device_ref(), &[set_layout])?;
 
         let pipeline = Pipeline::new(
             context.device_ref(),
@@ -204,22 +188,10 @@ impl MasterRenderer {
         )?;
 
         let vertices = [
-            CommonVertex::new(
-                Vec3::new(-0.5, -0.5, 0.0),
-                Vec4::new(1.0, 0.0, 0.0, 0.0),
-            ),
-            CommonVertex::new(
-                Vec3::new(0.5, -0.5, 0.0),
-                Vec4::new(0.0, 1.0, 0.0, 0.0),
-            ),
-            CommonVertex::new(
-                Vec3::new(0.5, 0.5, 0.0),
-                Vec4::new(0.0, 0.0, 1.0, 0.0),
-            ),
-            CommonVertex::new(
-                Vec3::new(-0.5, 0.5, 0.0),
-                Vec4::new(0.0, 0.0, 1.0, 0.0),
-            ),
+            CommonVertex::new(Vec3::new(-0.5, -0.5, 0.0), Vec4::new(1.0, 0.0, 0.0, 0.0)),
+            CommonVertex::new(Vec3::new(0.5, -0.5, 0.0), Vec4::new(0.0, 1.0, 0.0, 0.0)),
+            CommonVertex::new(Vec3::new(0.5, 0.5, 0.0), Vec4::new(0.0, 0.0, 1.0, 0.0)),
+            CommonVertex::new(Vec3::new(-0.5, 0.5, 0.0), Vec4::new(0.0, 0.0, 1.0, 0.0)),
         ];
 
         let vertexbuffer = Buffer::new(
@@ -259,10 +231,9 @@ impl MasterRenderer {
             per_frame_data: Vec::new(),
         };
 
-        master_renderer.per_frame_data =
-            (0..master_renderer.swapchain.image_count())
-                .map(|i| PerFrameData::new(&master_renderer, i as usize))
-                .collect::<Result<Vec<_>, _>>()?;
+        master_renderer.per_frame_data = (0..master_renderer.swapchain.image_count())
+            .map(|i| PerFrameData::new(&master_renderer, i as usize))
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(master_renderer)
     }
@@ -324,12 +295,7 @@ impl MasterRenderer {
         Ok(())
     }
 
-    pub fn draw(
-        &mut self,
-        window: &glfw::Window,
-        elapsed: f32,
-        dt: f32,
-    ) -> Result<(), Error> {
+    pub fn draw(&mut self, window: &glfw::Window, elapsed: f32, _dt: f32) -> Result<(), Error> {
         if self.should_resize {
             self.resize(window)?;
         }
@@ -337,11 +303,7 @@ impl MasterRenderer {
         let device = self.context.device();
 
         // Wait for current_frame to not be in use
-        fence::wait(
-            device,
-            &[self.in_flight_fences[self.current_frame]],
-            true,
-        )?;
+        fence::wait(device, &[self.in_flight_fences[self.current_frame]], true)?;
 
         // Acquire the next image from swapchain
         let image_index = match self
@@ -374,11 +336,9 @@ impl MasterRenderer {
         // Mark the image as being used by the frame in flight
         data.image_in_flight = self.in_flight_fences[self.current_frame];
 
-        let wait_semaphores =
-            [self.image_available_semaphores[self.current_frame]];
+        let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
 
-        let signal_semaphores =
-            [self.render_finished_semaphores[self.current_frame]];
+        let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
 
         // Reset fence before
         fence::reset(device, &[self.in_flight_fences[self.current_frame]])?;
@@ -386,11 +346,8 @@ impl MasterRenderer {
         data.uniformbuffer.fill(
             0,
             &UniformBufferObject {
-                mvp: Mat4::from_translation(Vec3::new(
-                    elapsed.sin() * 0.5,
-                    0.0,
-                    0.0,
-                )) * Mat4::from_rotation_z(elapsed * 2.0)
+                mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.0))
+                    * Mat4::from_rotation_z(elapsed * 2.0)
                     * Mat4::from_scale(elapsed.cos() * 0.25),
             },
         )?;
@@ -418,8 +375,7 @@ impl MasterRenderer {
             Err(e) => return Err(e.into()),
         };
 
-        self.current_frame =
-            (self.current_frame + 1) % FRAMES_IN_FLIGHT as usize;
+        self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT as usize;
 
         Ok(())
     }

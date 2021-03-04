@@ -4,19 +4,22 @@ use ash::{vk, Entry};
 use glfw::Glfw;
 use std::ffi::{CStr, CString};
 
-#[cfg(debug_assertions)]
-pub const INSTANCE_LAYERS: &'static [&str] = &["VK_LAYER_KHRONOS_validation"];
+pub const VALIDATION_LAYERS: &'static [&str] = &["VK_LAYER_KHRONOS_validation"];
 #[cfg(debug_assertions)]
 pub const ENABLE_VALIDATION_LAYERS: bool = true;
-#[cfg(debug_assertions)]
-pub const INSTANCE_EXTENSIONS: &'static [&str] = &["VK_EXT_debug_utils"];
-
-#[cfg(not(debug_assertions))]
-pub const INSTANCE_LAYERS: &'static [&str] = &[];
 #[cfg(not(debug_assertions))]
 pub const ENABLE_VALIDATION_LAYERS: bool = false;
-#[cfg(not(debug_assertions))]
-pub const INSTANCE_EXTENSIONS: &'static [&str] = &[];
+
+pub const INSTANCE_EXTENSIONS: &'static [&str] = &["VK_EXT_debug_utils"];
+
+// Returns the currently enabled instance layers
+pub fn get_layers() -> &'static [&'static str] {
+    if ENABLE_VALIDATION_LAYERS {
+        VALIDATION_LAYERS
+    } else {
+        &[]
+    }
+}
 
 /// Creates a vulkan instance with the appropriate extensions and layers
 pub fn create(
@@ -53,8 +56,9 @@ pub fn create(
         .map(|ext| ext.as_ptr() as *const i8)
         .collect::<Vec<_>>();
 
-    // Get layers
-    let layers = INSTANCE_LAYERS
+    let instance_layers = get_layers();
+
+    let layers = instance_layers
         .iter()
         .map(|s| CString::new(*s))
         .collect::<Result<Vec<_>, _>>()
@@ -98,8 +102,7 @@ fn get_missing_extensions(
             available
                 .iter()
                 .find(|avail| unsafe {
-                    CStr::from_ptr(avail.extension_name.as_ptr())
-                        == ext.as_c_str()
+                    CStr::from_ptr(avail.extension_name.as_ptr()) == ext.as_c_str()
                 })
                 .is_none()
         })
@@ -108,10 +111,7 @@ fn get_missing_extensions(
 }
 
 /// Returns a vector of missing layers
-fn get_missing_layers(
-    entry: &Entry,
-    layers: &[CString],
-) -> Result<Vec<CString>, vk::Result> {
+fn get_missing_layers(entry: &Entry, layers: &[CString]) -> Result<Vec<CString>, vk::Result> {
     let available = entry.enumerate_instance_layer_properties()?;
 
     Ok(layers

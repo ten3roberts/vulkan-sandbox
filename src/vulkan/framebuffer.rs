@@ -4,6 +4,7 @@ use super::{renderpass::RenderPass, Error};
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
+use log::debug;
 
 pub struct Framebuffer {
     device: Rc<Device>,
@@ -24,8 +25,7 @@ impl Framebuffer {
             .height(extent.height)
             .layers(1);
 
-        let framebuffer =
-            unsafe { device.create_framebuffer(&create_info, None)? };
+        let framebuffer = unsafe { device.create_framebuffer(&create_info, None)? };
 
         Ok(Framebuffer {
             device,

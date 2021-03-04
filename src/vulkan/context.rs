@@ -33,8 +33,7 @@ pub struct VulkanContext {
 impl VulkanContext {
     pub fn new(glfw: &Glfw, window: &glfw::Window) -> Result<Self, Error> {
         let entry = entry::create()?;
-        let instance =
-            instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
+        let instance = instance::create(&entry, &glfw, "Vulkan Application", "Custom")?;
 
         // Create debug utils if validation layers are enabled
         let debug_utils = if instance::ENABLE_VALIDATION_LAYERS {
@@ -47,17 +46,11 @@ impl VulkanContext {
         let surface_loader = surface::create_loader(&entry, &instance);
 
         let surface = surface::create(&instance, &window)?;
-        let (device, physical_device, queue_families) = device::create(
-            &instance,
-            &surface_loader,
-            surface,
-            instance::INSTANCE_LAYERS,
-        )?;
+        let (device, physical_device, queue_families) =
+            device::create(&instance, &surface_loader, surface, instance::get_layers())?;
 
-        let graphics_queue =
-            device::get_queue(&device, queue_families.graphics().unwrap(), 0);
-        let present_queue =
-            device::get_queue(&device, queue_families.present().unwrap(), 0);
+        let graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
+        let present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
 
         let allocator_info = vk_mem::AllocatorCreateInfo {
             physical_device,

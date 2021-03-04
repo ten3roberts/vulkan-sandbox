@@ -24,14 +24,14 @@ impl RenderPass {
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
             .build()];
 
-        let color_attachment_ref = vk::AttachmentReference {
+        let color_attachment_refs = [vk::AttachmentReference {
             attachment: 0,
             // Layout during subpass
             layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        };
+        }];
 
         let subpasses = [vk::SubpassDescription::builder()
-            .color_attachments(&[color_attachment_ref])
+            .color_attachments(&color_attachment_refs)
             .build()];
 
         let dependencies = [vk::SubpassDependency {
@@ -48,8 +48,7 @@ impl RenderPass {
             .attachments(&attachments)
             .subpasses(&subpasses)
             .dependencies(&dependencies);
-        let renderpass =
-            unsafe { device.create_render_pass(&create_info, None)? };
+        let renderpass = unsafe { device.create_render_pass(&create_info, None)? };
 
         Ok(RenderPass { device, renderpass })
     }

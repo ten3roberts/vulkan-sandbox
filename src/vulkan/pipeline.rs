@@ -51,15 +51,13 @@ impl Pipeline {
         let vertex_binding_descriptions = [vertex_binding];
 
         // No vertices for now
-        let vertex_input_info =
-            vk::PipelineVertexInputStateCreateInfo::builder()
-                .vertex_binding_descriptions(&vertex_binding_descriptions)
-                .vertex_attribute_descriptions(&vertex_attributes);
+        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
+            .vertex_binding_descriptions(&vertex_binding_descriptions)
+            .vertex_attribute_descriptions(&vertex_attributes);
 
-        let input_assembly =
-            vk::PipelineInputAssemblyStateCreateInfo::builder()
-                .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
-                .primitive_restart_enable(false);
+        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::builder()
+            .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .primitive_restart_enable(false);
 
         let viewports = [vk::Viewport {
             x: 0.0f32,
@@ -100,22 +98,21 @@ impl Pipeline {
             .alpha_to_coverage_enable(false)
             .alpha_to_one_enable(false);
 
-        let color_blend_attachments =
-            [vk::PipelineColorBlendAttachmentState::builder()
-                .color_write_mask(
-                    vk::ColorComponentFlags::R
-                        | vk::ColorComponentFlags::G
-                        | vk::ColorComponentFlags::B
-                        | vk::ColorComponentFlags::A,
-                )
-                .blend_enable(false)
-                .src_color_blend_factor(vk::BlendFactor::ONE)
-                .dst_color_blend_factor(vk::BlendFactor::ZERO)
-                .color_blend_op(vk::BlendOp::ADD)
-                .src_alpha_blend_factor(vk::BlendFactor::ONE)
-                .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
-                .alpha_blend_op(vk::BlendOp::ADD)
-                .build()];
+        let color_blend_attachments = [vk::PipelineColorBlendAttachmentState::builder()
+            .color_write_mask(
+                vk::ColorComponentFlags::R
+                    | vk::ColorComponentFlags::G
+                    | vk::ColorComponentFlags::B
+                    | vk::ColorComponentFlags::A,
+            )
+            .blend_enable(false)
+            .src_color_blend_factor(vk::BlendFactor::ONE)
+            .dst_color_blend_factor(vk::BlendFactor::ZERO)
+            .color_blend_op(vk::BlendOp::ADD)
+            .src_alpha_blend_factor(vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+            .alpha_blend_op(vk::BlendOp::ADD)
+            .build()];
 
         let color_blending = vk::PipelineColorBlendStateCreateInfo::builder()
             .logic_op_enable(false)
@@ -137,11 +134,7 @@ impl Pipeline {
 
         let pipeline = unsafe {
             device
-                .create_graphics_pipelines(
-                    vk::PipelineCache::null(),
-                    &[create_info],
-                    None,
-                )
+                .create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None)
                 .map_err(|(_, e)| e)?
         }[0];
 
@@ -177,9 +170,7 @@ impl PipelineLayout {
             .set_layouts(set_layouts)
             .push_constant_ranges(&[]);
 
-        let layout = unsafe {
-            device.create_pipeline_layout(&pipeline_layout_info, None)?
-        };
+        let layout = unsafe { device.create_pipeline_layout(&pipeline_layout_info, None)? };
 
         Ok(PipelineLayout { device, layout })
     }
@@ -195,12 +186,8 @@ impl Drop for PipelineLayout {
     }
 }
 
-fn create_shadermodule(
-    device: &Device,
-    code: &[u32],
-) -> Result<vk::ShaderModule, Error> {
+fn create_shadermodule(device: &Device, code: &[u32]) -> Result<vk::ShaderModule, Error> {
     let create_info = vk::ShaderModuleCreateInfo::builder().code(code);
-    let shadermodule =
-        unsafe { device.create_shader_module(&create_info, None)? };
+    let shadermodule = unsafe { device.create_shader_module(&create_info, None)? };
     Ok(shadermodule)
 }
