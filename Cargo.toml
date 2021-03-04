@@ -14,6 +14,3 @@ log = "0.4.14"
 thiserror = "1.0.23"
 ultraviolet = "0.7.5"
 vk-mem = "0.2.2"
-
-[build-dependencies]
-anyhow = "1.0"
