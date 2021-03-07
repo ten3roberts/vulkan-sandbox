@@ -25,6 +25,7 @@ use vulkan::*;
 
 use glfw;
 use std::{fs::File, rc::Rc};
+use vulkan_sandbox::color::Color;
 
 const FRAMES_IN_FLIGHT: usize = 2;
 
@@ -75,11 +76,16 @@ impl PerFrameData {
 
         commandbuffer.begin(Default::default())?;
 
+        let clear_color = Color::hex("#d8dee9").unwrap_or_default();
+        // let clear_color = Color::black();
+        log::info!("Clear color: {}", clear_color);
         commandbuffer.begin_renderpass(
             &renderer.renderpass,
             &framebuffer,
             renderer.swapchain.extent(),
+            clear_color,
         );
+
         commandbuffer.bind_pipeline(&renderer.pipeline);
         commandbuffer.bind_vertexbuffers(0, &[&renderer.vertexbuffer]);
         commandbuffer.bind_descriptor_sets(&renderer.pipeline_layout, 0, &descriptor_sets);
