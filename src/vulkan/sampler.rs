@@ -8,6 +8,7 @@ use ash::vk;
 pub use vk::Filter as FilterMode;
 pub use vk::SamplerAddressMode as AddressMode;
 
+#[derive(Clone, Copy, PartialEq)]
 pub struct SamplerInfo {
     pub address_mode: vk::SamplerAddressMode,
     pub filter_mode: vk::Filter,
