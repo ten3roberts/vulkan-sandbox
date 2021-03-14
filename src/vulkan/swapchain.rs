@@ -143,8 +143,7 @@ impl Swapchain {
             };
 
         let surface_format = pick_format(&support.formats);
-        let present_mode =
-            pick_present_mode(&support.present_modes, vk::PresentModeKHR::IMMEDIATE);
+        let present_mode = pick_present_mode(&support.present_modes, vk::PresentModeKHR::IMMEDIATE);
         let extent = pick_extent(window, &support.capabilities);
 
         let create_info = vk::SwapchainCreateInfoKHR::builder()

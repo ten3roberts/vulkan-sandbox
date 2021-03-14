@@ -148,9 +148,7 @@ impl Buffer {
             BufferUsage::Staged => self.write_staged(size, offset, write_func),
             BufferUsage::StagedPersistent => self.write_staged_persistent(offset, write_func),
             BufferUsage::Mapped => self.write_mapped(offset, write_func),
-            BufferUsage::MappedPersistent => {
-                self.write_mapped_persistent(size, offset, write_func)
-            }
+            BufferUsage::MappedPersistent => self.write_mapped_persistent(size, offset, write_func),
         }
     }
 

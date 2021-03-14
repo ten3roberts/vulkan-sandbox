@@ -162,10 +162,7 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new(
-        device: Rc<Device>,
-        set_layouts: &[vk::DescriptorSetLayout],
-    ) -> Result<Self, Error> {
+    pub fn new(device: Rc<Device>, set_layouts: &[vk::DescriptorSetLayout]) -> Result<Self, Error> {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(set_layouts)
             .push_constant_ranges(&[]);

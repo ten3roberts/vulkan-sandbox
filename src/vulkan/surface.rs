@@ -14,10 +14,7 @@ pub fn create_loader(entry: &Entry, instance: &Instance) -> Surface {
 }
 
 /// Creates a vulkan surface from window
-pub fn create(
-    instance: &Instance,
-    window: &Window,
-) -> Result<SurfaceKHR, Error> {
+pub fn create(instance: &Instance, window: &Window) -> Result<SurfaceKHR, Error> {
     let mut surface: u64 = 0_u64;
     let result = window.create_window_surface(
         instance.handle().as_raw() as _,
