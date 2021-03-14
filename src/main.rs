@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Dont initialize opengl context
     glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
+    glfw.window_hint(glfw::WindowHint::Resizable(false));
 
     let (mut window, events) = glfw
         .create_window(800, 600, "Vulkan Window", glfw::WindowMode::Windowed)
@@ -59,9 +60,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         if last_status.elapsed().secs() > 1.0 {
             last_status.reset();
             log::info!(
-                "Elapsed: {}ms\tFrametime: {}ms\tFramerate: {}",
-                elapsed.ms(),
-                dt.ms(),
+                "Elapsed: {:?}\tFrametime: {:?}\tFramerate: {}",
+                elapsed,
+                dt,
                 1.0 / dt.secs()
             );
         }

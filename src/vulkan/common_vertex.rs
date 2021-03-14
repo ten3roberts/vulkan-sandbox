@@ -9,29 +9,39 @@ use super::vertex::Vertex;
 pub struct CommonVertex {
     position: Vec3,
     color: Vec4,
+    uv: Vec2,
 }
 
 impl CommonVertex {
-    pub fn new(position: Vec3, color: Vec4) -> Self {
-        Self { position, color }
+    pub fn new(position: Vec3, color: Vec4, uv: Vec2) -> Self {
+        Self {
+            position,
+            color,
+            uv,
+        }
     }
 }
 
-const ATTRIBUTE_DESCRIPTIONS: &'static [vk::VertexInputAttributeDescription] =
-    &[
-        vk::VertexInputAttributeDescription {
-            binding: 0,
-            location: 0,
-            format: vk::Format::R32G32B32_SFLOAT,
-            offset: 0,
-        },
-        vk::VertexInputAttributeDescription {
-            binding: 0,
-            location: 1,
-            format: vk::Format::R32G32B32A32_SFLOAT,
-            offset: mem::size_of::<Vec3>() as u32,
-        },
-    ];
+const ATTRIBUTE_DESCRIPTIONS: &'static [vk::VertexInputAttributeDescription] = &[
+    vk::VertexInputAttributeDescription {
+        binding: 0,
+        location: 0,
+        format: vk::Format::R32G32B32_SFLOAT,
+        offset: 0,
+    },
+    vk::VertexInputAttributeDescription {
+        binding: 0,
+        location: 1,
+        format: vk::Format::R32G32B32A32_SFLOAT,
+        offset: mem::size_of::<Vec3>() as u32,
+    },
+    vk::VertexInputAttributeDescription {
+        binding: 0,
+        location: 2,
+        format: vk::Format::R32G32_SFLOAT,
+        offset: mem::size_of::<Vec4>() as u32 + mem::size_of::<Vec3>() as u32,
+    },
+];
 
 impl Vertex for CommonVertex {
     fn binding_description() -> vk::VertexInputBindingDescription {
@@ -42,8 +52,7 @@ impl Vertex for CommonVertex {
         }
     }
 
-    fn attribute_descriptions() -> &'static [vk::VertexInputAttributeDescription]
-    {
+    fn attribute_descriptions() -> &'static [vk::VertexInputAttributeDescription] {
         ATTRIBUTE_DESCRIPTIONS
     }
 }

@@ -4,7 +4,7 @@ use std::{mem, rc::Rc};
 use ash::vk;
 use vk_mem::Allocator;
 
-use super::{commands::*, context::VulkanContext, device, Error};
+use super::{commands::*, context::VulkanContext, Error};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 // Defines the type of a buffer
@@ -54,8 +54,7 @@ pub struct Buffer {
     usage: BufferUsage,
 
     // If a staging buffer is persisted
-    staging_buffer:
-        Option<(vk::Buffer, vk_mem::Allocation, vk_mem::AllocationInfo)>,
+    staging_buffer: Option<(vk::Buffer, vk_mem::Allocation, vk_mem::AllocationInfo)>,
 }
 
 impl Buffer {
@@ -73,31 +72,21 @@ impl Buffer {
         let vk_usage = match ty {
             BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
             BufferType::Uniform => vk::BufferUsageFlags::UNIFORM_BUFFER,
-            BufferType::Index16 | BufferType::Index32 => {
-                vk::BufferUsageFlags::INDEX_BUFFER
-            }
+            BufferType::Index16 | BufferType::Index32 => vk::BufferUsageFlags::INDEX_BUFFER,
         } | match usage {
-            BufferUsage::Mapped | BufferUsage::MappedPersistent => {
-                vk::BufferUsageFlags::default()
-            }
+            BufferUsage::Mapped | BufferUsage::MappedPersistent => vk::BufferUsageFlags::default(),
             BufferUsage::Staged | BufferUsage::StagedPersistent => {
                 vk::BufferUsageFlags::TRANSFER_DST
             }
         };
 
         let memory_usage = match usage {
-            BufferUsage::Staged | BufferUsage::StagedPersistent => {
-                vk_mem::MemoryUsage::GpuOnly
-            }
-            BufferUsage::Mapped | BufferUsage::MappedPersistent => {
-                vk_mem::MemoryUsage::CpuToGpu
-            }
+            BufferUsage::Staged | BufferUsage::StagedPersistent => vk_mem::MemoryUsage::GpuOnly,
+            BufferUsage::Mapped | BufferUsage::MappedPersistent => vk_mem::MemoryUsage::CpuToGpu,
         };
 
         let flags = match usage {
-            BufferUsage::MappedPersistent => {
-                vk_mem::AllocationCreateFlags::MAPPED
-            }
+            BufferUsage::MappedPersistent => vk_mem::AllocationCreateFlags::MAPPED,
             _ => vk_mem::AllocationCreateFlags::NONE,
         };
 
@@ -157,9 +146,7 @@ impl Buffer {
         }
         match self.usage {
             BufferUsage::Staged => self.write_staged(size, offset, write_func),
-            BufferUsage::StagedPersistent => {
-                self.write_staged_persistent(offset, write_func)
-            }
+            BufferUsage::StagedPersistent => self.write_staged_persistent(offset, write_func),
             BufferUsage::Mapped => self.write_mapped(offset, write_func),
             BufferUsage::MappedPersistent => {
                 self.write_mapped_persistent(size, offset, write_func)
@@ -192,11 +179,7 @@ impl Buffer {
 
     // Updates memory by mapping and unmapping
     // Will map the whole buffer
-    fn write_mapped<F>(
-        &self,
-        offset: vk::DeviceSize,
-        write_func: F,
-    ) -> Result<(), Error>
+    fn write_mapped<F>(&self, offset: vk::DeviceSize, write_func: F) -> Result<(), Error>
     where
         F: FnOnce(*mut u8),
     {
@@ -231,8 +214,8 @@ impl Buffer {
         write_func(mapped);
 
         copy(
-            self.context.graphics_queue(),
             self.context.transfer_pool(),
+            self.context.graphics_queue(),
             staging_buffer,
             self.buffer,
             size as _,
@@ -259,8 +242,7 @@ impl Buffer {
             Some(v) => v,
             // Create persistent staging buffer
             None => {
-                self.staging_buffer =
-                    Some(create_staging(allocator, self.size, false)?);
+                self.staging_buffer = Some(create_staging(allocator, self.size, false)?);
                 self.staging_buffer.as_ref().unwrap()
             }
         };
@@ -272,8 +254,8 @@ impl Buffer {
         write_func(mapped);
 
         copy(
-            self.context.graphics_queue(),
             self.context.transfer_pool(),
+            self.context.graphics_queue(),
             *staging_buffer,
             self.buffer,
             self.size as _,
@@ -288,19 +270,11 @@ impl Buffer {
     /// Fills the buffer  with provided data
     /// Uses write internally
     /// data cannot be larger in size than maximum buffer size
-    pub fn fill<T: Sized>(
-        &mut self,
-        offset: vk::DeviceSize,
-        data: &T,
-    ) -> Result<(), Error> {
+    pub fn fill<T: Sized>(&mut self, offset: vk::DeviceSize, data: &T) -> Result<(), Error> {
         let size = mem::size_of::<T>();
 
         self.write(size as _, offset, |mapped| unsafe {
-            std::ptr::copy_nonoverlapping(
-                data as *const T as *const u8,
-                mapped,
-                size,
-            )
+            std::ptr::copy_nonoverlapping(data as *const T as *const u8, mapped, size)
         })
     }
 
@@ -370,32 +344,52 @@ pub fn create_staging(
 /// `commandpool`: pool to allocate transfer command buffer
 /// Does not wait for operation to complete
 pub fn copy(
-    queue: vk::Queue,
     commandpool: &CommandPool,
+    queue: vk::Queue,
     src_buffer: vk::Buffer,
     dst_buffer: vk::Buffer,
     size: vk::DeviceSize,
     offset: vk::DeviceSize,
 ) -> Result<(), Error> {
-    let commandbuffer = commandpool.allocate(1)?.pop().unwrap();
-
-    commandbuffer.begin(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
-
     let region = vk::BufferCopy {
         src_offset: 0,
         dst_offset: offset,
         size,
     };
 
-    commandbuffer.copy_buffer(src_buffer, dst_buffer, &[region]);
+    commandpool.single_time_command(queue, |commandbuffer| {
+        commandbuffer.copy_buffer(src_buffer, dst_buffer, &[region]);
+    })
+}
 
-    commandbuffer.end()?;
+pub fn copy_to_image(
+    commandpool: &CommandPool,
+    queue: vk::Queue,
+    buffer: vk::Buffer,
+    image: vk::Image,
+    layout: vk::ImageLayout,
+    width: u32,
+    height: u32,
+) -> Result<(), Error> {
+    let region = vk::BufferImageCopy {
+        buffer_offset: 0,
+        buffer_row_length: 0,
+        buffer_image_height: 0,
+        image_subresource: vk::ImageSubresourceLayers {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            mip_level: 0,
+            base_array_layer: 0,
+            layer_count: 1,
+        },
+        image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+        image_extent: vk::Extent3D {
+            width,
+            height,
+            depth: 1,
+        },
+    };
 
-    commandbuffer.submit(queue, &[], &[], vk::Fence::null(), &[])?;
-
-    // Wait for operation to complete
-    device::queue_wait_idle(commandpool.device(), queue)?;
-
-    commandpool.free(commandbuffer);
-    Ok(())
+    commandpool.single_time_command(queue, |commandbuffer| {
+        commandbuffer.copy_buffer_image(buffer, image, layout, &[region])
+    })
 }

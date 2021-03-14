@@ -20,22 +20,14 @@ pub fn query_support(
     physical_device: vk::PhysicalDevice,
 ) -> Result<SwapchainSupport, Error> {
     let capabilities = unsafe {
-        surface_loader.get_physical_device_surface_capabilities(
-            physical_device,
-            surface,
-        )?
+        surface_loader.get_physical_device_surface_capabilities(physical_device, surface)?
     };
 
-    let formats = unsafe {
-        surface_loader
-            .get_physical_device_surface_formats(physical_device, surface)?
-    };
+    let formats =
+        unsafe { surface_loader.get_physical_device_surface_formats(physical_device, surface)? };
 
     let present_modes = unsafe {
-        surface_loader.get_physical_device_surface_present_modes(
-            physical_device,
-            surface,
-        )?
+        surface_loader.get_physical_device_surface_present_modes(physical_device, surface)?
     };
 
     Ok(SwapchainSupport {
@@ -48,7 +40,7 @@ pub fn query_support(
 pub fn pick_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
     for surface_format in formats {
         // Preferred surface_format
-        if surface_format.format == vk::Format::B8G8R8_SRGB
+        if surface_format.format == vk::Format::B8G8R8A8_SRGB
             && surface_format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
         {
             return *surface_format;
@@ -133,8 +125,7 @@ impl Swapchain {
 
         // Make sure max image count isn't exceeded
         if support.capabilities.max_image_count != 0 {
-            image_count =
-                cmp::min(image_count, support.capabilities.max_image_count);
+            image_count = cmp::min(image_count, support.capabilities.max_image_count);
         }
 
         // The full set
@@ -145,19 +136,15 @@ impl Swapchain {
 
         // Decide sharing mode depending on if graphics == present
         let (sharing_mode, queue_family_indices): (vk::SharingMode, &[u32]) =
-            if context.queue_families().graphics()
-                == context.queue_families().present()
-            {
+            if context.queue_families().graphics() == context.queue_families().present() {
                 (vk::SharingMode::EXCLUSIVE, &[])
             } else {
                 (vk::SharingMode::CONCURRENT, &queue_family_indices)
             };
 
         let surface_format = pick_format(&support.formats);
-        let present_mode = pick_present_mode(
-            &support.present_modes,
-            vk::PresentModeKHR::IMMEDIATE,
-        );
+        let present_mode =
+            pick_present_mode(&support.present_modes, vk::PresentModeKHR::IMMEDIATE);
         let extent = pick_extent(window, &support.capabilities);
 
         let create_info = vk::SwapchainCreateInfoKHR::builder()
@@ -177,22 +164,14 @@ impl Swapchain {
             .clipped(true)
             .old_swapchain(vk::SwapchainKHR::null());
 
-        let swapchain_khr =
-            unsafe { swapchain_loader.create_swapchain(&create_info, None)? };
+        let swapchain_khr = unsafe { swapchain_loader.create_swapchain(&create_info, None)? };
 
-        let images =
-            unsafe { swapchain_loader.get_swapchain_images(swapchain_khr)? };
+        let images = unsafe { swapchain_loader.get_swapchain_images(swapchain_khr)? };
 
         // Create image views
         let image_views = images
             .iter()
-            .map(|image| {
-                image_view::create(
-                    context.device(),
-                    *image,
-                    surface_format.format,
-                )
-            })
+            .map(|image| image_view::create(context.device(), *image, surface_format.format))
             .collect::<Result<_, _>>()?;
 
         Ok(Swapchain {
@@ -206,10 +185,7 @@ impl Swapchain {
         })
     }
 
-    pub fn next_image(
-        &self,
-        semaphore: vk::Semaphore,
-    ) -> Result<u32, vk::Result> {
+    pub fn next_image(&self, semaphore: vk::Semaphore) -> Result<u32, vk::Result> {
         let (image_index, _) = unsafe {
             self.swapchain_loader.acquire_next_image(
                 self.swapchain_khr,
@@ -238,9 +214,7 @@ impl Swapchain {
             p_image_indices: &image_index,
             p_results: std::ptr::null_mut(),
         };
-        let suboptimal = unsafe {
-            self.swapchain_loader.queue_present(queue, &present_info)?
-        };
+        let suboptimal = unsafe { self.swapchain_loader.queue_present(queue, &present_info)? };
 
         Ok(suboptimal)
     }

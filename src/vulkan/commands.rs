@@ -1,11 +1,15 @@
+use crate::color::Color;
 use std::rc::Rc;
 
-use super::buffer::{Buffer, BufferType};
 use super::framebuffer::Framebuffer;
 use super::pipeline::Pipeline;
 use super::pipeline::PipelineLayout;
 use super::renderpass::RenderPass;
 use super::Error;
+use super::{
+    buffer::{Buffer, BufferType},
+    device,
+};
 use arrayvec::ArrayVec;
 use ash::version::DeviceV1_0;
 use ash::vk;
@@ -44,8 +48,7 @@ impl CommandPool {
             .queue_family_index(queue_family)
             .flags(flags);
 
-        let commandpool =
-            unsafe { device.create_command_pool(&create_info, None)? };
+        let commandpool = unsafe { device.create_command_pool(&create_info, None)? };
 
         Ok(CommandPool {
             device,
@@ -94,15 +97,36 @@ impl CommandPool {
     // individually
     pub fn free(&self, commandbuffer: CommandBuffer) {
         unsafe {
-            self.device.free_command_buffers(
-                self.commandpool,
-                &[commandbuffer.commandbuffer],
-            )
+            self.device
+                .free_command_buffers(self.commandpool, &[commandbuffer.commandbuffer])
         }
     }
 
     pub fn device(&self) -> &ash::Device {
         &self.device
+    }
+
+    /// Provides a context withing a single time submit commandbuffer will be recorded
+    /// At the end of the function the commandbuffer is ended and submitted to the queue
+    /// Will wait for queue to idle
+    pub fn single_time_command<F: FnOnce(&CommandBuffer) -> R, R>(
+        &self,
+        queue: vk::Queue,
+        func: F,
+    ) -> Result<R, Error> {
+        let commandbuffer = self.allocate(1)?.pop().unwrap();
+
+        commandbuffer.begin(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
+
+        let result = func(&commandbuffer);
+
+        commandbuffer.end()?;
+        commandbuffer.submit(queue, &[], &[], vk::Fence::null(), &[])?;
+
+        device::queue_wait_idle(&self.device, queue)?;
+        self.free(commandbuffer);
+
+        Ok(result)
     }
 }
 
@@ -119,10 +143,7 @@ pub struct CommandBuffer {
 
 impl CommandBuffer {
     /// Starts recording of a commandbuffer
-    pub fn begin(
-        &self,
-        flags: vk::CommandBufferUsageFlags,
-    ) -> Result<(), Error> {
+    pub fn begin(&self, flags: vk::CommandBufferUsageFlags) -> Result<(), Error> {
         let begin_info = vk::CommandBufferBeginInfo {
             s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
             p_next: std::ptr::null(),
@@ -150,10 +171,11 @@ impl CommandBuffer {
         renderpass: &RenderPass,
         framebuffer: &Framebuffer,
         extent: vk::Extent2D,
+        clear_color: Color,
     ) {
         let clear_values = [vk::ClearValue {
             color: vk::ClearColorValue {
-                float32: [0.0, 0.0, 0.1, 1.0],
+                float32: clear_color.to_array_f32(),
             },
         }];
         let begin_info = vk::RenderPassBeginInfo {
@@ -194,11 +216,7 @@ impl CommandBuffer {
         }
     }
 
-    pub fn bind_vertexbuffers(
-        &self,
-        first_binding: u32,
-        vertexbuffers: &[&Buffer],
-    ) {
+    pub fn bind_vertexbuffers(&self, first_binding: u32, vertexbuffers: &[&Buffer]) {
         let buffers: ArrayVec<[vk::Buffer; MAX_VB_BINDING]> =
             vertexbuffers.iter().map(|vb| vb.buffer()).collect();
 
@@ -212,11 +230,7 @@ impl CommandBuffer {
         }
     }
 
-    pub fn bind_indexbuffer(
-        &self,
-        indexbuffer: &Buffer,
-        offset: vk::DeviceSize,
-    ) {
+    pub fn bind_indexbuffer(&self, indexbuffer: &Buffer, offset: vk::DeviceSize) {
         let index_type = match indexbuffer.ty() {
             BufferType::Index16 => vk::IndexType::UINT16,
             BufferType::Index32 => vk::IndexType::UINT32,
@@ -291,15 +305,43 @@ impl CommandBuffer {
         }
     }
 
-    pub fn copy_buffer(
-        &self,
-        src: vk::Buffer,
-        dst: vk::Buffer,
-        regions: &[vk::BufferCopy],
-    ) {
+    pub fn copy_buffer(&self, src: vk::Buffer, dst: vk::Buffer, regions: &[vk::BufferCopy]) {
         unsafe {
             self.device
                 .cmd_copy_buffer(self.commandbuffer, src, dst, regions)
+        }
+    }
+
+    /// Copies a buffer to an image
+    pub fn copy_buffer_image(
+        &self,
+        src: vk::Buffer,
+        dst: vk::Image,
+        layout: vk::ImageLayout,
+        regions: &[vk::BufferImageCopy],
+    ) {
+        unsafe {
+            self.device
+                .cmd_copy_buffer_to_image(self.commandbuffer, src, dst, layout, regions)
+        }
+    }
+
+    pub fn pipeline_barrier(
+        &self,
+        src_stage_mask: vk::PipelineStageFlags,
+        dst_stage_mask: vk::PipelineStageFlags,
+        image_barriers: &[vk::ImageMemoryBarrier],
+    ) {
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                self.commandbuffer,
+                src_stage_mask,
+                dst_stage_mask,
+                vk::DependencyFlags::default(),
+                &[],
+                &[],
+                image_barriers,
+            )
         }
     }
 

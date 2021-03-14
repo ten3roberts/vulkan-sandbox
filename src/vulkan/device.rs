@@ -1,10 +1,10 @@
 use super::{swapchain, Error};
-use ash::Instance;
 use ash::{
     extensions::khr::Surface,
     vk::{self, SurfaceKHR},
 };
 use ash::{version::DeviceV1_0, version::InstanceV1_0};
+use ash::{Device, Instance};
 use std::{
     collections::HashSet,
     ffi::{CStr, CString},
@@ -24,9 +24,8 @@ impl QueueFamilies {
         surface_loader: &Surface,
         surface: SurfaceKHR,
     ) -> Result<QueueFamilies, Error> {
-        let family_properties = unsafe {
-            instance.get_physical_device_queue_family_properties(device)
-        };
+        let family_properties =
+            unsafe { instance.get_physical_device_queue_family_properties(device) };
         let mut queue_families = QueueFamilies {
             graphics: None,
             present: None,
@@ -39,9 +38,7 @@ impl QueueFamilies {
             }
 
             if unsafe {
-                surface_loader.get_physical_device_surface_support(
-                    device, i as u32, surface,
-                )?
+                surface_loader.get_physical_device_surface_support(device, i as u32, surface)?
             } {
                 queue_families.present = Some(i as u32);
             }
@@ -92,7 +89,7 @@ fn rate_physical_device(
     extensions: &[CString],
 ) -> Option<(vk::PhysicalDevice, Score, QueueFamilies)> {
     let properties = unsafe { instance.get_physical_device_properties(device) };
-    let _features = unsafe { instance.get_physical_device_features(device) };
+    let features = unsafe { instance.get_physical_device_features(device) };
 
     // Current device does not support one or more extensions
     if !get_missing_extensions(instance, device, extensions)
@@ -103,18 +100,14 @@ fn rate_physical_device(
     }
 
     // Ensure swapchain capabilites
-    let swapchain_support =
-        swapchain::query_support(surface_loader, surface, device).ok()?;
+    let swapchain_support = swapchain::query_support(surface_loader, surface, device).ok()?;
 
     // Swapchain support isn't adequate
-    if swapchain_support.formats.is_empty()
-        || swapchain_support.present_modes.is_empty()
-    {
+    if swapchain_support.formats.is_empty() || swapchain_support.present_modes.is_empty() {
         return None;
     }
 
-    let queue_families =
-        QueueFamilies::find(instance, device, surface_loader, surface).ok()?;
+    let queue_families = QueueFamilies::find(instance, device, surface_loader, surface).ok()?;
 
     // Graphics queue is required
     if !queue_families.has_graphics() {
@@ -134,6 +127,10 @@ fn rate_physical_device(
         score += 1000;
     }
 
+    if features.sampler_anisotropy == vk::TRUE {
+        score += 1000;
+    }
+
     score += properties.limits.max_image_dimension2_d as Score;
     score += properties.limits.max_push_constants_size as Score;
 
@@ -145,8 +142,7 @@ fn get_missing_extensions(
     device: vk::PhysicalDevice,
     extensions: &[CString],
 ) -> Result<Vec<CString>, Error> {
-    let available =
-        unsafe { instance.enumerate_device_extension_properties(device)? };
+    let available = unsafe { instance.enumerate_device_extension_properties(device)? };
 
     Ok(extensions
         .iter()
@@ -154,8 +150,7 @@ fn get_missing_extensions(
             available
                 .iter()
                 .find(|avail| unsafe {
-                    CStr::from_ptr(avail.extension_name.as_ptr())
-                        == ext.as_c_str()
+                    CStr::from_ptr(avail.extension_name.as_ptr()) == ext.as_c_str()
                 })
                 .is_none()
         })
@@ -174,15 +169,7 @@ fn pick_physical_device(
 
     let (device, _, queue_families) = devices
         .into_iter()
-        .filter_map(|d| {
-            rate_physical_device(
-                instance,
-                d,
-                surface_loader,
-                surface,
-                &extensions,
-            )
-        })
+        .filter_map(|d| rate_physical_device(instance, d, surface_loader, surface, &extensions))
         .max_by_key(|v| v.0)
         .ok_or(Error::UnsuitableDevice)?;
 
@@ -195,7 +182,7 @@ pub fn create(
     surface_loader: &Surface,
     surface: SurfaceKHR,
     layers: &[&str],
-) -> Result<(Rc<ash::Device>, vk::PhysicalDevice, QueueFamilies), Error> {
+) -> Result<(Rc<Device>, vk::PhysicalDevice, QueueFamilies), Error> {
     let extensions = DEVICE_EXTENSIONS
         .iter()
         .map(|s| CString::new(*s))
@@ -236,37 +223,44 @@ pub fn create(
         .map(|ext| ext.as_ptr() as *const i8)
         .collect::<Vec<_>>();
 
+    let enabled_features = vk::PhysicalDeviceFeatures {
+        sampler_anisotropy: vk::TRUE,
+        ..Default::default()
+    };
+
     let create_info = vk::DeviceCreateInfo::builder()
         .queue_create_infos(&queue_create_infos)
         .enabled_extension_names(&extension_names_raw)
-        .enabled_layer_names(&layer_names_raw);
+        .enabled_layer_names(&layer_names_raw)
+        .enabled_features(&enabled_features);
 
-    let device =
-        unsafe { instance.create_device(physical_device, &create_info, None)? };
+    let device = unsafe { instance.create_device(physical_device, &create_info, None)? };
     Ok((Rc::new(device), physical_device, queue_families))
 }
 
-pub fn wait_idle(device: &ash::Device) -> Result<(), Error> {
+pub fn get_limits(
+    instance: &Instance,
+    physical_device: vk::PhysicalDevice,
+) -> vk::PhysicalDeviceLimits {
+    let properties = unsafe { instance.get_physical_device_properties(physical_device) };
+
+    properties.limits
+}
+
+pub fn wait_idle(device: &Device) -> Result<(), Error> {
     unsafe { device.device_wait_idle()? }
     Ok(())
 }
 
-pub fn queue_wait_idle(
-    device: &ash::Device,
-    queue: vk::Queue,
-) -> Result<(), Error> {
+pub fn queue_wait_idle(device: &Device, queue: vk::Queue) -> Result<(), Error> {
     unsafe { device.queue_wait_idle(queue)? }
     Ok(())
 }
 
-pub fn get_queue(
-    device: &ash::Device,
-    family_index: u32,
-    index: u32,
-) -> vk::Queue {
+pub fn get_queue(device: &Device, family_index: u32, index: u32) -> vk::Queue {
     unsafe { device.get_device_queue(family_index, index) }
 }
 
-pub fn destroy(device: &ash::Device) {
+pub fn destroy(device: &Device) {
     unsafe { device.destroy_device(None) };
 }

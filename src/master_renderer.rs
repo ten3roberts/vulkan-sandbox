@@ -69,6 +69,8 @@ impl PerFrameData {
             renderer.context.device(),
             descriptor_sets[0],
             &uniformbuffer,
+            &renderer.texture,
+            &renderer.sampler,
         );
 
         // Create and record command buffers
@@ -76,9 +78,7 @@ impl PerFrameData {
 
         commandbuffer.begin(Default::default())?;
 
-        let clear_color = Color::hex("#d8dee9").unwrap_or_default();
-        // let clear_color = Color::black();
-        log::info!("Clear color: {}", clear_color);
+        let clear_color = Color::black();
         commandbuffer.begin_renderpass(
             &renderer.renderpass,
             &framebuffer,
@@ -133,6 +133,9 @@ pub struct MasterRenderer {
     current_frame: usize,
     should_resize: bool,
 
+    texture: Texture,
+    sampler: Sampler,
+
     // Drop context last
     context: Rc<VulkanContext>,
 }
@@ -169,6 +172,7 @@ impl MasterRenderer {
             context.device_ref(),
             swapchain.image_count(),
             swapchain.image_count(),
+            swapchain.image_count(),
         )?;
 
         let image_available_semaphores = (0..FRAMES_IN_FLIGHT)
@@ -193,11 +197,28 @@ impl MasterRenderer {
             false,
         )?;
 
+        // Simple quad
         let vertices = [
-            CommonVertex::new(Vec3::new(-0.5, -0.5, 0.0), Vec4::new(1.0, 0.0, 0.0, 0.0)),
-            CommonVertex::new(Vec3::new(0.5, -0.5, 0.0), Vec4::new(0.0, 1.0, 0.0, 0.0)),
-            CommonVertex::new(Vec3::new(0.5, 0.5, 0.0), Vec4::new(0.0, 0.0, 1.0, 0.0)),
-            CommonVertex::new(Vec3::new(-0.5, 0.5, 0.0), Vec4::new(0.0, 0.0, 1.0, 0.0)),
+            CommonVertex::new(
+                Vec3::new(-0.5, -0.5, 0.0),
+                Vec4::new(1.0, 0.0, 0.0, 0.0),
+                Vec2::new(1.0, 0.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(0.5, -0.5, 0.0),
+                Vec4::new(0.0, 1.0, 0.0, 0.0),
+                Vec2::new(0.0, 0.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(0.5, 0.5, 0.0),
+                Vec4::new(0.0, 0.0, 1.0, 0.0),
+                Vec2::new(0.0, 1.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(-0.5, 0.5, 0.0),
+                Vec4::new(0.0, 0.0, 1.0, 0.0),
+                Vec2::new(1.0, 1.0),
+            ),
         ];
 
         let vertexbuffer = Buffer::new(
@@ -216,6 +237,17 @@ impl MasterRenderer {
             &indices,
         )?;
 
+        let texture = Texture::load(context.clone(), "./data/textures/uv.png")?;
+
+        let sampler_info = SamplerInfo {
+            address_mode: sampler::AddressMode::REPEAT,
+            filter_mode: sampler::FilterMode::LINEAR,
+            unnormalized_coordinates: false,
+            anisotropy: 16.0,
+        };
+
+        let sampler = Sampler::new(context.clone(), sampler_info)?;
+
         let mut master_renderer = MasterRenderer {
             context,
             swapchain_loader,
@@ -231,6 +263,8 @@ impl MasterRenderer {
             indexbuffer,
             current_frame: 0,
             should_resize: false,
+            texture,
+            sampler,
 
             set_layout,
             descriptor_pool,
@@ -353,8 +387,7 @@ impl MasterRenderer {
             0,
             &UniformBufferObject {
                 mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.0))
-                    * Mat4::from_rotation_z(elapsed * 2.0)
-                    * Mat4::from_scale(elapsed.cos() * 0.25),
+                    * Mat4::from_rotation_z(elapsed * 0.2),
             },
         )?;
 

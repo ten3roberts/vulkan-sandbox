@@ -132,8 +132,6 @@ impl Color {
             _ => return Err(ColorParseError),
         };
 
-        dbg!(r, g, b, a);
-
         Ok(Self {
             r: r as _,
             g: g as _,

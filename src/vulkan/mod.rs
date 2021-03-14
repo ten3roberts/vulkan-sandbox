@@ -13,13 +13,18 @@ pub mod image_view;
 pub mod instance;
 pub mod pipeline;
 pub mod renderpass;
+pub mod sampler;
 pub mod semaphore;
 pub mod surface;
 pub mod swapchain;
+mod texture;
 pub mod vertex;
 
 pub use context::VulkanContext;
 pub use error::Error;
 pub use pipeline::{Pipeline, PipelineLayout};
 pub use renderpass::RenderPass;
+pub use sampler::Sampler;
+pub use sampler::SamplerInfo;
 pub use swapchain::Swapchain;
+pub use texture::Texture;

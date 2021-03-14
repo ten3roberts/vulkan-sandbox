@@ -28,6 +28,8 @@ pub struct VulkanContext {
     /// CommandPool for allocatig transfer command buffers
     /// Wrap in option to drop early
     transfer_pool: Option<CommandPool>,
+
+    limits: vk::PhysicalDeviceLimits,
 }
 
 impl VulkanContext {
@@ -48,6 +50,9 @@ impl VulkanContext {
         let surface = surface::create(&instance, &window)?;
         let (device, physical_device, queue_families) =
             device::create(&instance, &surface_loader, surface, instance::get_layers())?;
+
+        // Get the physical device limits
+        let limits = device::get_limits(&instance, physical_device);
 
         let graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
         let present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
@@ -84,6 +89,7 @@ impl VulkanContext {
             present_queue,
             allocator,
             transfer_pool: Some(transfer_pool),
+            limits,
         })
     }
 
@@ -127,6 +133,10 @@ impl VulkanContext {
 
     pub fn allocator(&self) -> &vk_mem::Allocator {
         &self.allocator
+    }
+
+    pub fn limits(&self) -> &vk::PhysicalDeviceLimits {
+        &self.limits
     }
 
     /// Returns a commandpool that can be used to allocate for transfer

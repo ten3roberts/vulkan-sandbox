@@ -1,6 +1,7 @@
 use std::ffi::CString;
 
 use ash::vk;
+use stb_image::image;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -24,9 +25,16 @@ pub enum Error {
     #[error("IO error {0}")]
     IOError(#[from] std::io::Error),
 
-    #[error("Insufficient buffer size. Trying to write {size} bytes to buffer of {max_size} bytes")]
+    #[error(
+        "Insufficient buffer size. Trying to write {size} bytes to buffer of {max_size} bytes"
+    )]
     BufferOverflow {
         size: vk::DeviceSize,
         max_size: vk::DeviceSize,
     },
+    #[error("Failed to load image file {0}")]
+    ImageError(String),
+
+    #[error("Unsupported layout transition from {0:?} to {1:?}")]
+    UnsupportedLayoutTransition(vk::ImageLayout, vk::ImageLayout),
 }

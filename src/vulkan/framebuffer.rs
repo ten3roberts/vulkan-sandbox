@@ -4,7 +4,6 @@ use super::{renderpass::RenderPass, Error};
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
-use log::debug;
 
 pub struct Framebuffer {
     device: Rc<Device>,
