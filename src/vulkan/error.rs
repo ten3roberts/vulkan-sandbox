@@ -1,7 +1,6 @@
-use std::ffi::CString;
+use std::{ffi::CString, path::PathBuf};
 
 use ash::vk;
-use stb_image::image;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -33,7 +32,7 @@ pub enum Error {
         max_size: vk::DeviceSize,
     },
     #[error("Failed to load image file {0}")]
-    ImageError(String),
+    ImageError(PathBuf),
 
     #[error("Unsupported layout transition from {0:?} to {1:?}")]
     UnsupportedLayoutTransition(vk::ImageLayout, vk::ImageLayout),

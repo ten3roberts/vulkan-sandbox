@@ -2,7 +2,6 @@ use std::{path::Path, rc::Rc};
 
 use ash::version::DeviceV1_0;
 use ash::vk;
-use stb_image::image;
 
 use super::{buffer, commands::*, context::VulkanContext, Error};
 
@@ -19,17 +18,16 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn load<P: AsRef<Path> + ToString>(
-        context: Rc<VulkanContext>,
-        path: P,
-    ) -> Result<Self, Error> {
-        let pixels = match image::load_with_depth(&path, 4, true) {
-            image::LoadResult::Error(_) => return Err(Error::ImageError(path.to_string())),
-            image::LoadResult::ImageU8(pixels) => pixels,
-            image::LoadResult::ImageF32(_) => unreachable!(),
-        };
+    pub fn load<P: AsRef<Path>>(context: Rc<VulkanContext>, path: P) -> Result<Self, Error> {
+        let image =
+            stb::Image::load(&path, 4).ok_or(Error::ImageError(path.as_ref().to_owned()))?;
 
-        Self::new(context, pixels.width as _, pixels.height as _, &pixels.data)
+        Self::new(
+            context,
+            image.width() as _,
+            image.height() as _,
+            &image.pixels(),
+        )
     }
 
     /// Creates a texture from raw pixels
@@ -209,12 +207,14 @@ pub fn transition_layout(
                 vk::PipelineStageFlags::TRANSFER,
             ),
 
-            (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-                vk::AccessFlags::TRANSFER_WRITE,
-                vk::AccessFlags::SHADER_READ,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
-            ),
+            (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => {
+                (
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::AccessFlags::SHADER_READ,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                )
+            }
             _ => return Err(Error::UnsupportedLayoutTransition(old_layout, new_layout)),
         };
 

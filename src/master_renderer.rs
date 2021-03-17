@@ -91,7 +91,7 @@ impl PerFrameData {
         commandbuffer.bind_descriptor_sets(&renderer.pipeline_layout, 0, &descriptor_sets);
 
         commandbuffer.bind_indexbuffer(&renderer.indexbuffer, 0);
-        commandbuffer.draw_indexed(6, 1, 0, 0, 0);
+        commandbuffer.draw_indexed(12, 1, 0, 0, 0);
         commandbuffer.end_renderpass();
         commandbuffer.end()?;
 
@@ -219,6 +219,26 @@ impl MasterRenderer {
                 Vec4::new(0.0, 0.0, 1.0, 0.0),
                 Vec2::new(1.0, 1.0),
             ),
+            CommonVertex::new(
+                Vec3::new(-0.5, -0.5, 0.2),
+                Vec4::new(1.0, 0.0, 0.0, 0.0),
+                Vec2::new(1.0, 0.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(0.5, -0.5, 0.2),
+                Vec4::new(0.0, 1.0, 0.0, 0.0),
+                Vec2::new(0.0, 0.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(0.5, 0.5, 0.2),
+                Vec4::new(0.0, 0.0, 1.0, 0.0),
+                Vec2::new(0.0, 1.0),
+            ),
+            CommonVertex::new(
+                Vec3::new(-0.5, 0.5, 0.2),
+                Vec4::new(0.0, 0.0, 1.0, 0.0),
+                Vec2::new(1.0, 1.0),
+            ),
         ];
 
         let vertexbuffer = Buffer::new(
@@ -228,7 +248,7 @@ impl MasterRenderer {
             &vertices,
         )?;
 
-        let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
+        let indices: [u16; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
 
         let indexbuffer = Buffer::new(
             context.clone(),
@@ -237,7 +257,7 @@ impl MasterRenderer {
             &indices,
         )?;
 
-        let texture = Texture::load(context.clone(), "./data/textures/uv.png")?;
+        let texture = Texture::load(context.clone(), "./data/textures/statue.jpg")?;
 
         let sampler_info = SamplerInfo {
             address_mode: sampler::AddressMode::REPEAT,
@@ -386,8 +406,9 @@ impl MasterRenderer {
         data.uniformbuffer.fill(
             0,
             &UniformBufferObject {
-                mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.0))
-                    * Mat4::from_rotation_z(elapsed * 0.2),
+                mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.5))
+                    * Mat4::from_rotation_z(elapsed * 0.2)
+                    * Mat4::from_rotation_y(elapsed),
             },
         )?;
 
