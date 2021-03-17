@@ -1,4 +1,3 @@
-use crate::color::Color;
 use std::rc::Rc;
 
 use super::framebuffer::Framebuffer;
@@ -171,13 +170,8 @@ impl CommandBuffer {
         renderpass: &RenderPass,
         framebuffer: &Framebuffer,
         extent: vk::Extent2D,
-        clear_color: Color,
+        clear_values: &[vk::ClearValue],
     ) {
-        let clear_values = [vk::ClearValue {
-            color: vk::ClearColorValue {
-                float32: clear_color.to_array_f32(),
-            },
-        }];
         let begin_info = vk::RenderPassBeginInfo {
             s_type: vk::StructureType::RENDER_PASS_BEGIN_INFO,
             p_next: std::ptr::null(),

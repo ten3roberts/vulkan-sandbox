@@ -20,6 +20,9 @@ pub mod swapchain;
 mod texture;
 pub mod vertex;
 
+pub use buffer::Buffer;
+pub use buffer::BufferType;
+pub use buffer::BufferUsage;
 pub use context::VulkanContext;
 pub use error::Error;
 pub use pipeline::{Pipeline, PipelineLayout};
@@ -28,3 +31,4 @@ pub use sampler::Sampler;
 pub use sampler::SamplerInfo;
 pub use swapchain::Swapchain;
 pub use texture::Texture;
+pub use texture::TextureType;

@@ -5,6 +5,11 @@ use ash::vk;
 
 use super::{buffer, commands::*, context::VulkanContext, Error};
 
+pub enum TextureType {
+    Color,
+    Depth,
+}
+
 // Represents a texture combining an image and image view
 pub struct Texture {
     context: Rc<VulkanContext>,
@@ -18,31 +23,41 @@ pub struct Texture {
 }
 
 impl Texture {
+    /// Loads a color texture from an image file
     pub fn load<P: AsRef<Path>>(context: Rc<VulkanContext>, path: P) -> Result<Self, Error> {
         let image =
             stb::Image::load(&path, 4).ok_or(Error::ImageError(path.as_ref().to_owned()))?;
 
-        Self::new(
+        let texture = Self::new(
             context,
+            TextureType::Color,
+            vk::Format::R8G8B8A8_SRGB,
             image.width() as _,
             image.height() as _,
-            &image.pixels(),
-        )
+        )?;
+
+        let size = image.width() as u64 * image.height() as u64 * 4;
+        texture.write(size, image.pixels())?;
+        Ok(texture)
     }
 
     /// Creates a texture from raw pixels
     /// pixels are of format R8G8B8A8
     pub fn new(
         context: Rc<VulkanContext>,
+        ty: TextureType,
+        format: vk::Format,
         width: u32,
         height: u32,
-        pixels: &[u8],
     ) -> Result<Self, Error> {
-        let size = width as u64 * height as u64 * 4;
+        let vk_usage = match ty {
+            TextureType::Color => vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+            TextureType::Depth => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        };
 
         let memory_usage = vk_mem::MemoryUsage::GpuOnly;
         let flags = vk_mem::AllocationCreateFlags::NONE;
-        let format = vk::Format::R8G8B8A8_SRGB;
+
         let image_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
@@ -55,7 +70,7 @@ impl Texture {
             .format(format)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .usage(vk_usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlags::TYPE_1);
 
@@ -70,29 +85,31 @@ impl Texture {
             },
         )?;
 
-        let texture = Self::from_image(context, width, height, format, image, Some(allocation))?;
-
-        texture.write(size, pixels)?;
-
-        Ok(texture)
+        Self::from_image(context, ty, width, height, format, image, Some(allocation))
     }
 
     /// Creates a texture from an already existing VkImage
     /// If allocation is provided, the image will be destroyed along with self
     pub fn from_image(
         context: Rc<VulkanContext>,
+        ty: TextureType,
         width: u32,
         height: u32,
         format: vk::Format,
         image: vk::Image,
         allocation: Option<vk_mem::Allocation>,
     ) -> Result<Self, Error> {
+        let aspect_mask = match ty {
+            TextureType::Color => vk::ImageAspectFlags::COLOR,
+            TextureType::Depth => vk::ImageAspectFlags::DEPTH,
+        };
+
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
             .format(format)
             .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
+                aspect_mask,
                 base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 0,
@@ -207,14 +224,12 @@ pub fn transition_layout(
                 vk::PipelineStageFlags::TRANSFER,
             ),
 
-            (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => {
-                (
-                    vk::AccessFlags::TRANSFER_WRITE,
-                    vk::AccessFlags::SHADER_READ,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::FRAGMENT_SHADER,
-                )
-            }
+            (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
+                vk::AccessFlags::TRANSFER_WRITE,
+                vk::AccessFlags::SHADER_READ,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+            ),
             _ => return Err(Error::UnsupportedLayoutTransition(old_layout, new_layout)),
         };
 

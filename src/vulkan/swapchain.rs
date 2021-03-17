@@ -5,7 +5,7 @@ use ash::Device;
 use ash::Instance;
 use std::{cmp, rc::Rc};
 
-use super::{image_view, Error, VulkanContext};
+use super::{image_view, Error, Texture, TextureType, VulkanContext};
 
 #[derive(Debug)]
 pub struct SwapchainSupport {
@@ -104,6 +104,7 @@ pub struct Swapchain {
     swapchain_khr: vk::SwapchainKHR,
     images: Vec<vk::Image>,
     image_views: Vec<vk::ImageView>,
+    depth_attachment: Texture,
     extent: vk::Extent2D,
     surface_format: vk::SurfaceFormatKHR,
 }
@@ -173,11 +174,20 @@ impl Swapchain {
             .map(|image| image_view::create(context.device(), *image, surface_format.format))
             .collect::<Result<_, _>>()?;
 
+        let depth_attachment = Texture::new(
+            context.clone(),
+            TextureType::Depth,
+            vk::Format::D32_SFLOAT,
+            extent.width,
+            extent.height,
+        )?;
+
         Ok(Swapchain {
             context,
             swapchain_khr,
             images,
             image_views,
+            depth_attachment,
             surface_format,
             swapchain_loader,
             extent,
@@ -231,8 +241,16 @@ impl Swapchain {
         &self.image_views
     }
 
+    pub fn depth_attachment(&self) -> &Texture {
+        &self.depth_attachment
+    }
+
     pub fn surface_format(&self) -> vk::SurfaceFormatKHR {
         self.surface_format
+    }
+
+    pub fn depth_format(&self) -> vk::Format {
+        self.depth_attachment.format()
     }
 
     pub fn extent(&self) -> vk::Extent2D {

@@ -6,13 +6,10 @@ use ultraviolet::vec::*;
 
 use vulkan_sandbox::vulkan;
 
+use vulkan::swapchain;
 use vulkan::Error;
-use vulkan::{buffer::Buffer, swapchain};
-use vulkan::{
-    buffer::{BufferType, BufferUsage},
-    vertex::*,
-};
 use vulkan::{common_vertex::CommonVertex, context::VulkanContext};
+use vulkan::{vertex::*, Buffer, BufferType, BufferUsage};
 
 use vulkan::commands::*;
 use vulkan::descriptors;
@@ -50,7 +47,10 @@ impl PerFrameData {
         let framebuffer = Framebuffer::new(
             renderer.context.device_ref(),
             &renderer.renderpass,
-            &[renderer.swapchain.image_views()[index]],
+            &[
+                renderer.swapchain.image_views()[index],
+                renderer.swapchain.depth_attachment().image_view(),
+            ],
             renderer.swapchain.extent(),
         )?;
 
@@ -78,12 +78,24 @@ impl PerFrameData {
 
         commandbuffer.begin(Default::default())?;
 
-        let clear_color = Color::black();
         commandbuffer.begin_renderpass(
             &renderer.renderpass,
             &framebuffer,
             renderer.swapchain.extent(),
-            clear_color,
+            // TODO Autogenerate clear color based on one value
+            &[
+                vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 0.0],
+                    },
+                },
+                vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
+                },
+            ],
         );
 
         commandbuffer.bind_pipeline(&renderer.pipeline);
@@ -149,7 +161,11 @@ impl MasterRenderer {
 
         let swapchain = Swapchain::new(context.clone(), Rc::clone(&swapchain_loader), &window)?;
 
-        let renderpass = RenderPass::new(context.device_ref(), swapchain.surface_format().format)?;
+        let renderpass = RenderPass::new(
+            context.device_ref(),
+            swapchain.surface_format().format,
+            swapchain.depth_format(),
+        )?;
 
         let vs = File::open("./data/shaders/default.vert.spv")?;
         let fs = File::open("./data/shaders/default.frag.spv")?;
@@ -201,42 +217,42 @@ impl MasterRenderer {
         let vertices = [
             CommonVertex::new(
                 Vec3::new(-0.5, -0.5, 0.0),
-                Vec4::new(1.0, 0.0, 0.0, 0.0),
+                Color::red().to_vec4(),
                 Vec2::new(1.0, 0.0),
             ),
             CommonVertex::new(
                 Vec3::new(0.5, -0.5, 0.0),
-                Vec4::new(0.0, 1.0, 0.0, 0.0),
+                Color::red().to_vec4(),
                 Vec2::new(0.0, 0.0),
             ),
             CommonVertex::new(
                 Vec3::new(0.5, 0.5, 0.0),
-                Vec4::new(0.0, 0.0, 1.0, 0.0),
+                Color::red().to_vec4(),
                 Vec2::new(0.0, 1.0),
             ),
             CommonVertex::new(
                 Vec3::new(-0.5, 0.5, 0.0),
-                Vec4::new(0.0, 0.0, 1.0, 0.0),
+                Color::red().to_vec4(),
                 Vec2::new(1.0, 1.0),
             ),
             CommonVertex::new(
-                Vec3::new(-0.5, -0.5, 0.2),
-                Vec4::new(1.0, 0.0, 0.0, 0.0),
+                Vec3::new(-0.5, -0.5, -0.2),
+                Color::blue().to_vec4(),
                 Vec2::new(1.0, 0.0),
             ),
             CommonVertex::new(
-                Vec3::new(0.5, -0.5, 0.2),
-                Vec4::new(0.0, 1.0, 0.0, 0.0),
+                Vec3::new(0.5, -0.5, -0.2),
+                Color::blue().to_vec4(),
                 Vec2::new(0.0, 0.0),
             ),
             CommonVertex::new(
-                Vec3::new(0.5, 0.5, 0.2),
-                Vec4::new(0.0, 0.0, 1.0, 0.0),
+                Vec3::new(0.5, 0.5, -0.2),
+                Color::blue().to_vec4(),
                 Vec2::new(0.0, 1.0),
             ),
             CommonVertex::new(
-                Vec3::new(-0.5, 0.5, 0.2),
-                Vec4::new(0.0, 0.0, 1.0, 0.0),
+                Vec3::new(-0.5, 0.5, -0.2),
+                Color::blue().to_vec4(),
                 Vec2::new(1.0, 1.0),
             ),
         ];
@@ -326,6 +342,7 @@ impl MasterRenderer {
             self.renderpass = RenderPass::new(
                 self.context.device_ref(),
                 self.swapchain.surface_format().format,
+                self.swapchain.depth_format(),
             )?;
         }
 
