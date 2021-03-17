@@ -1,5 +1,7 @@
 use std::{fmt::Display, str::FromStr};
 
+use ultraviolet::{Vec3, Vec4};
+
 pub struct ColorParseError;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
@@ -264,6 +266,25 @@ impl Color {
             byte_to_percent(self.b),
             byte_to_percent(self.a),
         ]
+    }
+
+    // Converts color to R32G32B32A32 vector in range 0..1
+    pub fn to_vec4(&self) -> Vec4 {
+        Vec4::new(
+            byte_to_percent(self.r),
+            byte_to_percent(self.g),
+            byte_to_percent(self.b),
+            byte_to_percent(self.a),
+        )
+    }
+
+    // Converts color to R32G32B32 vector in range 0..1
+    pub fn to_vec3(&self) -> Vec3 {
+        Vec3::new(
+            byte_to_percent(self.r),
+            byte_to_percent(self.g),
+            byte_to_percent(self.b),
+        )
     }
 }
 
