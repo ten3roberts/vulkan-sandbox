@@ -10,13 +10,16 @@ edition = "2018"
 arrayvec = "0.5.2"
 ash = "0.31.0"
 glfw = { version = "0.41.0", features = [ "vulkan" ] }
+gltf = "0.15.2"
 log = "0.4.14"
 thiserror = "1.0.23"
 ultraviolet = "0.7.5"
 vk-mem = "0.2.2"
 
-# Local dependencies
+# Local workspace dependencies
 stb = { path = "./stb" }
 
 [workspace]
-members = [ "stb" ]
+members = [
+  "stb"
+]

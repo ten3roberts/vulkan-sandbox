@@ -18,7 +18,7 @@ pub mod semaphore;
 pub mod surface;
 pub mod swapchain;
 mod texture;
-pub mod vertex;
+mod vertex;
 
 pub use buffer::Buffer;
 pub use buffer::BufferType;
@@ -32,3 +32,4 @@ pub use sampler::SamplerInfo;
 pub use swapchain::Swapchain;
 pub use texture::Texture;
 pub use texture::TextureType;
+pub use vertex::VertexDesc;

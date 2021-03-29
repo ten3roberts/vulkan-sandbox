@@ -84,7 +84,7 @@ impl Pipeline {
             .rasterizer_discard_enable(false)
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
-            .cull_mode(vk::CullModeFlags::BACK)
+            .cull_mode(vk::CullModeFlags::NONE)
             .front_face(vk::FrontFace::CLOCKWISE)
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
@@ -175,7 +175,10 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new(device: Rc<Device>, set_layouts: &[vk::DescriptorSetLayout]) -> Result<Self, Error> {
+    pub fn new(
+        device: Rc<Device>,
+        set_layouts: &[vk::DescriptorSetLayout],
+    ) -> Result<Self, Error> {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(set_layouts)
             .push_constant_ranges(&[]);

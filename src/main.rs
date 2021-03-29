@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Dont initialize opengl context
     glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
-    glfw.window_hint(glfw::WindowHint::Resizable(false));
+    glfw.window_hint(glfw::WindowHint::Resizable(true));
 
     let (mut window, events) = glfw
         .create_window(800, 600, "Vulkan Window", glfw::WindowMode::Windowed)

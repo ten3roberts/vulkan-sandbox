@@ -3,13 +3,14 @@ use ash::vk;
 use log::info;
 use ultraviolet::mat::*;
 use ultraviolet::vec::*;
+use vulkan_sandbox::mesh;
+use vulkan_sandbox::mesh::Mesh;
 
 use vulkan_sandbox::vulkan;
 
+use vulkan::context::VulkanContext;
 use vulkan::swapchain;
-use vulkan::Error;
-use vulkan::{common_vertex::CommonVertex, context::VulkanContext};
-use vulkan::{vertex::*, Buffer, BufferType, BufferUsage};
+use vulkan::{Buffer, BufferType, BufferUsage, VertexDesc};
 
 use vulkan::commands::*;
 use vulkan::descriptors;
@@ -21,8 +22,7 @@ use vulkan::swapchain::*;
 use vulkan::*;
 
 use glfw;
-use std::{fs::File, rc::Rc};
-use vulkan_sandbox::color::Color;
+use std::{error::Error, fs::File, rc::Rc};
 
 const FRAMES_IN_FLIGHT: usize = 2;
 
@@ -43,7 +43,7 @@ struct PerFrameData {
 }
 
 impl PerFrameData {
-    fn new(renderer: &MasterRenderer, index: usize) -> Result<Self, Error> {
+    fn new(renderer: &MasterRenderer, index: usize) -> Result<Self, vulkan::Error> {
         let framebuffer = Framebuffer::new(
             renderer.context.device_ref(),
             &renderer.renderpass,
@@ -58,9 +58,9 @@ impl PerFrameData {
             renderer.context.clone(),
             BufferType::Uniform,
             BufferUsage::MappedPersistent,
-            &UniformBufferObject {
+            &[UniformBufferObject {
                 mvp: Mat4::from_translation(Vec3::new(0.0, 0.4, 0.0)),
-            },
+            }],
         )?;
 
         let descriptor_sets = renderer.descriptor_pool.allocate(&[renderer.set_layout])?;
@@ -99,11 +99,19 @@ impl PerFrameData {
         );
 
         commandbuffer.bind_pipeline(&renderer.pipeline);
-        commandbuffer.bind_vertexbuffers(0, &[&renderer.vertexbuffer]);
+        log::debug!("Vertexcount: {}", renderer.mesh.vertex_count());
+        log::debug!("Indexcount: {}", renderer.mesh.index_count());
+        commandbuffer.bind_vertexbuffers(0, &[&renderer.mesh.vertex_buffer()]);
         commandbuffer.bind_descriptor_sets(&renderer.pipeline_layout, 0, &descriptor_sets);
 
-        commandbuffer.bind_indexbuffer(&renderer.indexbuffer, 0);
-        commandbuffer.draw_indexed(12, 1, 0, 0, 0);
+        log::debug!(
+            "Vertex count: {}, index count: {}",
+            renderer.mesh.vertex_count(),
+            renderer.mesh.index_count()
+        );
+
+        commandbuffer.bind_indexbuffer(&renderer.mesh.index_buffer(), 0);
+        commandbuffer.draw_indexed(renderer.mesh.index_count(), 1, 0, 0, 0);
         commandbuffer.end_renderpass();
         commandbuffer.end()?;
 
@@ -133,8 +141,7 @@ pub struct MasterRenderer {
     commandpool: CommandPool,
     renderpass: RenderPass,
 
-    vertexbuffer: Buffer,
-    indexbuffer: Buffer,
+    mesh: Mesh,
 
     set_layout: vk::DescriptorSetLayout,
     descriptor_pool: DescriptorPool,
@@ -153,7 +160,7 @@ pub struct MasterRenderer {
 }
 
 impl MasterRenderer {
-    pub fn new(context: Rc<VulkanContext>, window: &glfw::Window) -> Result<Self, Error> {
+    pub fn new(context: Rc<VulkanContext>, window: &glfw::Window) -> Result<Self, Box<dyn Error>> {
         let swapchain_loader = Rc::new(swapchain::create_loader(
             context.instance(),
             context.device(),
@@ -180,8 +187,8 @@ impl MasterRenderer {
             swapchain.extent(),
             &pipeline_layout,
             &renderpass,
-            CommonVertex::binding_description(),
-            CommonVertex::attribute_descriptions(),
+            mesh::Vertex::binding_description(),
+            mesh::Vertex::attribute_descriptions(),
         )?;
 
         let descriptor_pool = DescriptorPool::new(
@@ -214,64 +221,54 @@ impl MasterRenderer {
         )?;
 
         // Simple quad
-        let vertices = [
-            CommonVertex::new(
+        let _vertices = [
+            mesh::Vertex::new(
                 Vec3::new(-0.5, -0.5, 0.0),
-                Color::red().to_vec4(),
+                Vec3::unit_x(),
                 Vec2::new(1.0, 0.0),
             ),
-            CommonVertex::new(
+            mesh::Vertex::new(
                 Vec3::new(0.5, -0.5, 0.0),
-                Color::red().to_vec4(),
+                Vec3::unit_x(),
                 Vec2::new(0.0, 0.0),
             ),
-            CommonVertex::new(
+            mesh::Vertex::new(
                 Vec3::new(0.5, 0.5, 0.0),
-                Color::red().to_vec4(),
+                Vec3::unit_x(),
                 Vec2::new(0.0, 1.0),
             ),
-            CommonVertex::new(
+            mesh::Vertex::new(
                 Vec3::new(-0.5, 0.5, 0.0),
-                Color::red().to_vec4(),
+                Vec3::unit_x(),
                 Vec2::new(1.0, 1.0),
             ),
-            CommonVertex::new(
+            mesh::Vertex::new(
                 Vec3::new(-0.5, -0.5, -0.2),
-                Color::blue().to_vec4(),
+                Vec3::unit_x(),
                 Vec2::new(1.0, 0.0),
             ),
-            CommonVertex::new(
+            mesh::Vertex::new(
                 Vec3::new(0.5, -0.5, -0.2),
-                Color::blue().to_vec4(),
+                Vec3::unit_x(),
                 Vec2::new(0.0, 0.0),
             ),
-            CommonVertex::new(
+            mesh::Vertex::new(
                 Vec3::new(0.5, 0.5, -0.2),
-                Color::blue().to_vec4(),
+                Vec3::unit_x(),
                 Vec2::new(0.0, 1.0),
             ),
-            CommonVertex::new(
+            mesh::Vertex::new(
                 Vec3::new(-0.5, 0.5, -0.2),
-                Color::blue().to_vec4(),
+                Vec3::unit_x(),
                 Vec2::new(1.0, 1.0),
             ),
         ];
 
-        let vertexbuffer = Buffer::new(
-            context.clone(),
-            BufferType::Vertex,
-            BufferUsage::Staged,
-            &vertices,
-        )?;
+        let _indices: [u32; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
 
-        let indices: [u16; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
-
-        let indexbuffer = Buffer::new(
-            context.clone(),
-            BufferType::Index16,
-            BufferUsage::Staged,
-            &indices,
-        )?;
+        let (document, buffers, _images) = gltf::import("./data/models/monkey.gltf")?;
+        // let mesh = Mesh::new(context.clone(), &vertices, &indices)?;
+        let mesh = Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)?;
 
         let texture = Texture::load(context.clone(), "./data/textures/statue.jpg")?;
 
@@ -295,13 +292,11 @@ impl MasterRenderer {
             render_finished_semaphores,
             commandpool,
             renderpass,
-            vertexbuffer,
-            indexbuffer,
             current_frame: 0,
             should_resize: false,
             texture,
             sampler,
-
+            mesh,
             set_layout,
             descriptor_pool,
             per_frame_data: Vec::new(),
@@ -321,7 +316,7 @@ impl MasterRenderer {
     }
 
     // Does the resizing
-    fn resize(&mut self, window: &glfw::Window) -> Result<(), Error> {
+    fn resize(&mut self, window: &glfw::Window) -> Result<(), vulkan::Error> {
         log::debug!("Resizing");
         self.should_resize = false;
 
@@ -356,8 +351,8 @@ impl MasterRenderer {
             self.swapchain.extent(),
             &self.pipeline_layout,
             &self.renderpass,
-            CommonVertex::binding_description(),
-            CommonVertex::attribute_descriptions(),
+            mesh::Vertex::binding_description(),
+            mesh::Vertex::attribute_descriptions(),
         )?;
 
         self.commandpool.reset(false)?;
@@ -372,7 +367,12 @@ impl MasterRenderer {
         Ok(())
     }
 
-    pub fn draw(&mut self, window: &glfw::Window, elapsed: f32, _dt: f32) -> Result<(), Error> {
+    pub fn draw(
+        &mut self,
+        window: &glfw::Window,
+        elapsed: f32,
+        _dt: f32,
+    ) -> Result<(), vulkan::Error> {
         if self.should_resize {
             self.resize(window)?;
         }
@@ -422,11 +422,12 @@ impl MasterRenderer {
 
         data.uniformbuffer.fill(
             0,
-            &UniformBufferObject {
+            &[UniformBufferObject {
                 mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.5))
                     * Mat4::from_rotation_z(elapsed * 0.2)
-                    * Mat4::from_rotation_y(elapsed),
-            },
+                    * Mat4::from_rotation_y(elapsed)
+                    * Mat4::from_scale(0.25),
+            }],
         )?;
 
         // Submit command buffers

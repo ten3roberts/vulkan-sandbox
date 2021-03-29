@@ -3,7 +3,7 @@ use std::mem;
 use ash::vk;
 use ultraviolet::vec::*;
 
-use super::vertex::Vertex;
+use super::vertex::VertexDesc;
 
 #[repr(C)]
 pub struct CommonVertex {
@@ -43,7 +43,7 @@ const ATTRIBUTE_DESCRIPTIONS: &'static [vk::VertexInputAttributeDescription] = &
     },
 ];
 
-impl Vertex for CommonVertex {
+impl VertexDesc for CommonVertex {
     fn binding_description() -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription {
             binding: 0,

@@ -64,9 +64,9 @@ impl Buffer {
         context: Rc<VulkanContext>,
         ty: BufferType,
         usage: BufferUsage,
-        data: &T,
+        data: &[T],
     ) -> Result<Self, Error> {
-        let size = mem::size_of::<T>() as vk::DeviceSize;
+        let size = (mem::size_of::<T>() * data.len()) as vk::DeviceSize;
 
         // Calculate the buffer usage flags
         let vk_usage = match ty {
@@ -148,7 +148,9 @@ impl Buffer {
             BufferUsage::Staged => self.write_staged(size, offset, write_func),
             BufferUsage::StagedPersistent => self.write_staged_persistent(offset, write_func),
             BufferUsage::Mapped => self.write_mapped(offset, write_func),
-            BufferUsage::MappedPersistent => self.write_mapped_persistent(size, offset, write_func),
+            BufferUsage::MappedPersistent => {
+                self.write_mapped_persistent(size, offset, write_func)
+            }
         }
     }
 
@@ -268,11 +270,11 @@ impl Buffer {
     /// Fills the buffer  with provided data
     /// Uses write internally
     /// data cannot be larger in size than maximum buffer size
-    pub fn fill<T: Sized>(&mut self, offset: vk::DeviceSize, data: &T) -> Result<(), Error> {
-        let size = mem::size_of::<T>();
+    pub fn fill<T: Sized>(&mut self, offset: vk::DeviceSize, data: &[T]) -> Result<(), Error> {
+        let size = mem::size_of::<T>() * data.len();
 
         self.write(size as _, offset, |mapped| unsafe {
-            std::ptr::copy_nonoverlapping(data as *const T as *const u8, mapped, size)
+            std::ptr::copy_nonoverlapping(data.as_ptr() as *const T as *const u8, mapped, size)
         })
     }
 
