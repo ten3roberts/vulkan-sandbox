@@ -80,19 +80,39 @@ type Score = usize;
 
 const DEVICE_EXTENSIONS: &[&str] = &["VK_KHR_swapchain"];
 
+/// Represents a physical device along with the queried properties, features, and queue families
+pub struct PhysicalDeviceInfo {
+    pub physical_device: vk::PhysicalDevice,
+    pub name: String,
+    pub score: Score,
+    pub queue_families: QueueFamilies,
+    pub limits: vk::PhysicalDeviceLimits,
+    pub features: vk::PhysicalDeviceFeatures,
+    pub properties: vk::PhysicalDeviceProperties,
+}
+
 // Rates physical device suitability
 fn rate_physical_device(
     instance: &Instance,
-    device: vk::PhysicalDevice,
+    physical_device: vk::PhysicalDevice,
     surface_loader: &Surface,
     surface: SurfaceKHR,
     extensions: &[CString],
-) -> Option<(vk::PhysicalDevice, Score, QueueFamilies)> {
-    let properties = unsafe { instance.get_physical_device_properties(device) };
-    let features = unsafe { instance.get_physical_device_features(device) };
+) -> Option<PhysicalDeviceInfo> {
+    let properties = unsafe { instance.get_physical_device_properties(physical_device) };
+    let features = unsafe { instance.get_physical_device_features(physical_device) };
+
+    // Save the device name
+    let name = unsafe {
+        CStr::from_ptr(properties.device_name.as_ptr())
+            .to_string_lossy()
+            .to_string()
+    };
+
+    log::debug!("Iterating device: {}", name);
 
     // Current device does not support one or more extensions
-    if !get_missing_extensions(instance, device, extensions)
+    if !get_missing_extensions(instance, physical_device, extensions)
         .ok()?
         .is_empty()
     {
@@ -100,14 +120,16 @@ fn rate_physical_device(
     }
 
     // Ensure swapchain capabilites
-    let swapchain_support = swapchain::query_support(surface_loader, surface, device).ok()?;
+    let swapchain_support =
+        swapchain::query_support(surface_loader, surface, physical_device).ok()?;
 
     // Swapchain support isn't adequate
     if swapchain_support.formats.is_empty() || swapchain_support.present_modes.is_empty() {
         return None;
     }
 
-    let queue_families = QueueFamilies::find(instance, device, surface_loader, surface).ok()?;
+    let queue_families =
+        QueueFamilies::find(instance, physical_device, surface_loader, surface).ok()?;
 
     // Graphics queue is required
     if !queue_families.has_graphics() {
@@ -124,17 +146,25 @@ fn rate_physical_device(
     let mut score: Score = 0;
 
     if properties.device_type == vk::PhysicalDeviceType::DISCRETE_GPU {
-        score += 1000;
+        score += 10000;
     }
 
     if features.sampler_anisotropy == vk::TRUE {
-        score += 1000;
+        score += 10000;
     }
 
     score += properties.limits.max_image_dimension2_d as Score;
     score += properties.limits.max_push_constants_size as Score;
 
-    Some((device, score, queue_families))
+    Some(PhysicalDeviceInfo {
+        physical_device,
+        name,
+        score,
+        features,
+        properties,
+        limits: properties.limits,
+        queue_families,
+    })
 }
 
 fn get_missing_extensions(
@@ -164,16 +194,14 @@ fn pick_physical_device(
     surface_loader: &Surface,
     surface: SurfaceKHR,
     extensions: &[CString],
-) -> Result<(vk::PhysicalDevice, QueueFamilies), Error> {
+) -> Result<PhysicalDeviceInfo, Error> {
     let devices = unsafe { instance.enumerate_physical_devices()? };
 
-    let (device, _, queue_families) = devices
+    devices
         .into_iter()
         .filter_map(|d| rate_physical_device(instance, d, surface_loader, surface, &extensions))
-        .max_by_key(|v| v.0)
-        .ok_or(Error::UnsuitableDevice)?;
-
-    Ok((device, queue_families))
+        .max_by_key(|v| v.score)
+        .ok_or(Error::UnsuitableDevice)
 }
 
 /// Creates a logical device by choosing the best appropriate physical device
@@ -182,19 +210,18 @@ pub fn create(
     surface_loader: &Surface,
     surface: SurfaceKHR,
     layers: &[&str],
-) -> Result<(Rc<Device>, vk::PhysicalDevice, QueueFamilies), Error> {
+) -> Result<(Rc<Device>, PhysicalDeviceInfo), Error> {
     let extensions = DEVICE_EXTENSIONS
         .iter()
         .map(|s| CString::new(*s))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
-    let (physical_device, queue_families) =
-        pick_physical_device(instance, surface_loader, surface, &extensions)?;
+    let pdevice_info = pick_physical_device(instance, surface_loader, surface, &extensions)?;
 
     let mut unique_queue_families = HashSet::new();
-    unique_queue_families.insert(queue_families.graphics().unwrap());
-    unique_queue_families.insert(queue_families.present().unwrap());
+    unique_queue_families.insert(pdevice_info.queue_families.graphics().unwrap());
+    unique_queue_families.insert(pdevice_info.queue_families.present().unwrap());
 
     let queue_create_infos: Vec<_> = unique_queue_families
         .iter()
@@ -223,8 +250,9 @@ pub fn create(
         .map(|ext| ext.as_ptr() as *const i8)
         .collect::<Vec<_>>();
 
+    // TODO May not be present on all devices
     let enabled_features = vk::PhysicalDeviceFeatures {
-        sampler_anisotropy: vk::TRUE,
+        sampler_anisotropy: pdevice_info.features.sampler_anisotropy,
         ..Default::default()
     };
 
@@ -234,8 +262,9 @@ pub fn create(
         .enabled_layer_names(&layer_names_raw)
         .enabled_features(&enabled_features);
 
-    let device = unsafe { instance.create_device(physical_device, &create_info, None)? };
-    Ok((Rc::new(device), physical_device, queue_families))
+    let device =
+        unsafe { instance.create_device(pdevice_info.physical_device, &create_info, None)? };
+    Ok((Rc::new(device), pdevice_info))
 }
 
 pub fn get_limits(

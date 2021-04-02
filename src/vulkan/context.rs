@@ -48,17 +48,19 @@ impl VulkanContext {
         let surface_loader = surface::create_loader(&entry, &instance);
 
         let surface = surface::create(&instance, &window)?;
-        let (device, physical_device, queue_families) =
+        let (device, pdevice_info) =
             device::create(&instance, &surface_loader, surface, instance::get_layers())?;
 
         // Get the physical device limits
-        let limits = device::get_limits(&instance, physical_device);
+        let limits = device::get_limits(&instance, pdevice_info.physical_device);
 
-        let graphics_queue = device::get_queue(&device, queue_families.graphics().unwrap(), 0);
-        let present_queue = device::get_queue(&device, queue_families.present().unwrap(), 0);
+        let graphics_queue =
+            device::get_queue(&device, pdevice_info.queue_families.graphics().unwrap(), 0);
+        let present_queue =
+            device::get_queue(&device, pdevice_info.queue_families.present().unwrap(), 0);
 
         let allocator_info = vk_mem::AllocatorCreateInfo {
-            physical_device,
+            physical_device: pdevice_info.physical_device,
             device: (*device).clone(),
             instance: instance.clone(),
             flags: vk_mem::AllocatorCreateFlags::default(),
@@ -71,7 +73,7 @@ impl VulkanContext {
 
         let transfer_pool = CommandPool::new(
             device.clone(),
-            queue_families.graphics().unwrap(),
+            pdevice_info.queue_families.graphics().unwrap(),
             true,
             true,
         )?;
@@ -80,8 +82,8 @@ impl VulkanContext {
             _entry: entry,
             instance,
             device,
-            physical_device,
-            queue_families,
+            physical_device: pdevice_info.physical_device,
+            queue_families: pdevice_info.queue_families,
             debug_utils,
             surface_loader,
             surface,
