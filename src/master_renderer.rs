@@ -99,16 +99,8 @@ impl PerFrameData {
         );
 
         commandbuffer.bind_pipeline(&renderer.pipeline);
-        log::debug!("Vertexcount: {}", renderer.mesh.vertex_count());
-        log::debug!("Indexcount: {}", renderer.mesh.index_count());
         commandbuffer.bind_vertexbuffers(0, &[&renderer.mesh.vertex_buffer()]);
         commandbuffer.bind_descriptor_sets(&renderer.pipeline_layout, 0, &descriptor_sets);
-
-        log::debug!(
-            "Vertex count: {}, index count: {}",
-            renderer.mesh.vertex_count(),
-            renderer.mesh.index_count()
-        );
 
         commandbuffer.bind_indexbuffer(&renderer.mesh.index_buffer(), 0);
         commandbuffer.draw_indexed(renderer.mesh.index_count(), 1, 0, 0, 0);
@@ -267,16 +259,19 @@ impl MasterRenderer {
         let _indices: [u32; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
 
         let (document, buffers, _images) = gltf::import("./data/models/monkey.gltf")?;
+
         // let mesh = Mesh::new(context.clone(), &vertices, &indices)?;
         let mesh = Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)?;
 
-        let texture = Texture::load(context.clone(), "./data/textures/statue.jpg")?;
+        let texture = Texture::load(context.clone(), "./data/textures/uv.png")?;
 
         let sampler_info = SamplerInfo {
             address_mode: sampler::AddressMode::REPEAT,
-            filter_mode: sampler::FilterMode::LINEAR,
+            mag_filter: sampler::FilterMode::LINEAR,
+            min_filter: sampler::FilterMode::LINEAR,
             unnormalized_coordinates: false,
             anisotropy: 16.0,
+            mip_levels: texture.mip_levels(),
         };
 
         let sampler = Sampler::new(context.clone(), sampler_info)?;
@@ -424,7 +419,6 @@ impl MasterRenderer {
             0,
             &[UniformBufferObject {
                 mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.5))
-                    * Mat4::from_rotation_z(elapsed * 0.2)
                     * Mat4::from_rotation_y(elapsed)
                     * Mat4::from_scale(0.25),
             }],

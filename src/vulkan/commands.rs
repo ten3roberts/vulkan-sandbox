@@ -339,6 +339,28 @@ impl CommandBuffer {
         }
     }
 
+    pub fn blit_image(
+        &self,
+        src: vk::Image,
+        src_layout: vk::ImageLayout,
+        dst: vk::Image,
+        dst_layout: vk::ImageLayout,
+        regions: &[vk::ImageBlit],
+        filter: vk::Filter,
+    ) {
+        unsafe {
+            self.device.cmd_blit_image(
+                self.commandbuffer,
+                src,
+                src_layout,
+                dst,
+                dst_layout,
+                regions,
+                filter,
+            )
+        }
+    }
+
     pub fn submit(
         &self,
         queue: vk::Queue,

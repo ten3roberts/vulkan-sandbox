@@ -11,11 +11,18 @@ pub use vk::SamplerAddressMode as AddressMode;
 #[derive(Clone, Copy, PartialEq)]
 pub struct SamplerInfo {
     pub address_mode: vk::SamplerAddressMode,
-    pub filter_mode: vk::Filter,
+    /// Filter mode used for undersampling when there are fewer texels than pixels,
+    /// e.g; scaling up
+    pub mag_filter: vk::Filter,
+    /// Filter mode used for oversampling when there are more texels than pixels,
+    /// e.g; scaling down
+    pub min_filter: vk::Filter,
     pub unnormalized_coordinates: bool,
-    // From 1.0 to 16.0
-    // Anisotropy is disabled if value is set to 1.0
+    /// From 1.0 to 16.0
+    /// Anisotropy is automatically disabled if value is set to 1.0
     pub anisotropy: f32,
+    /// Number of mipmapping levels to use
+    pub mip_levels: u32,
 }
 
 pub struct Sampler {
@@ -37,9 +44,11 @@ impl Sampler {
             s_type: vk::StructureType::SAMPLER_CREATE_INFO,
             p_next: std::ptr::null(),
             flags: vk::SamplerCreateFlags::default(),
-            mag_filter: info.filter_mode,
-            min_filter: info.filter_mode,
+            mag_filter: info.mag_filter,
+            min_filter: info.min_filter,
             mipmap_mode: vk::SamplerMipmapMode::LINEAR,
+            min_lod: 0.0,
+            max_lod: info.mip_levels as f32,
             address_mode_u: info.address_mode,
             address_mode_v: info.address_mode,
             address_mode_w: info.address_mode,
@@ -48,8 +57,6 @@ impl Sampler {
             max_anisotropy,
             compare_enable: vk::FALSE,
             compare_op: vk::CompareOp::ALWAYS,
-            min_lod: 0.0,
-            max_lod: 0.0,
             border_color: vk::BorderColor::INT_OPAQUE_BLACK,
             unnormalized_coordinates: info.unnormalized_coordinates as u32,
         };
