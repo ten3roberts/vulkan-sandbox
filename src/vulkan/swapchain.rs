@@ -5,7 +5,7 @@ use ash::Device;
 use ash::Instance;
 use std::{cmp, rc::Rc};
 
-use super::{image_view, Error, Texture, TextureType, VulkanContext};
+use super::{image_view, Error, Texture, TextureInfo, VulkanContext};
 
 #[derive(Debug)]
 pub struct SwapchainSupport {
@@ -37,7 +37,7 @@ pub fn query_support(
     })
 }
 
-pub fn pick_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
+fn pick_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
     for surface_format in formats {
         // Preferred surface_format
         if surface_format.format == vk::Format::B8G8R8A8_SRGB
@@ -53,7 +53,7 @@ pub fn pick_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
 /// Picks a present mode
 /// If `preferred` is available, it is used
 /// Otherwise, FIFO is returned
-pub fn pick_present_mode(
+fn pick_present_mode(
     modes: &[vk::PresentModeKHR],
     preferred: vk::PresentModeKHR,
 ) -> vk::PresentModeKHR {
@@ -67,10 +67,7 @@ pub fn pick_present_mode(
     return vk::PresentModeKHR::FIFO;
 }
 
-pub fn pick_extent(
-    window: &glfw::Window,
-    capabilities: &vk::SurfaceCapabilitiesKHR,
-) -> vk::Extent2D {
+fn pick_extent(window: &glfw::Window, capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
     // The extent of the surface needs to match exactly
     if capabilities.current_extent.width != std::u32::MAX {
         return capabilities.current_extent;
@@ -177,11 +174,13 @@ impl Swapchain {
 
         let depth_attachment = Texture::new(
             context.clone(),
-            TextureType::Depth,
-            vk::Format::D32_SFLOAT,
-            extent.width,
-            extent.height,
-            false,
+            TextureInfo {
+                width: extent.width,
+                height: extent.height,
+                ty: super::TextureType::Depth,
+                format: vk::Format::D32_SFLOAT,
+                mip_levels: 1,
+            },
         )?;
 
         Ok(Swapchain {
@@ -231,7 +230,6 @@ impl Swapchain {
     }
 
     // Getters
-
     pub fn image_count(&self) -> u32 {
         self.images.len() as _
     }

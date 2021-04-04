@@ -8,7 +8,8 @@ use ash::vk;
 pub use vk::Filter as FilterMode;
 pub use vk::SamplerAddressMode as AddressMode;
 
-#[derive(Clone, Copy, PartialEq)]
+/// Specification dictating how a sampler is created
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SamplerInfo {
     pub address_mode: vk::SamplerAddressMode,
     /// Filter mode used for undersampling when there are fewer texels than pixels,

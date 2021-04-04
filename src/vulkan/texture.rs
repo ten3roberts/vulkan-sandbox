@@ -5,6 +5,36 @@ use ash::vk;
 
 use super::{buffer, commands::*, context::VulkanContext, Error};
 
+pub use vk::Format;
+
+/// Specifies texture creation info.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextureInfo {
+    pub width: u32,
+    pub height: u32,
+    /// The maximum amount of mip levels to use.
+    /// Actual value may be lower due to texture size.
+    /// A value of zero uses the maximum mip levels.
+    pub mip_levels: u32,
+    /// The type/aspect of texture.
+    pub ty: TextureType,
+    /// The pixel format.
+    pub format: Format,
+}
+
+impl Default for TextureInfo {
+    fn default() -> Self {
+        Self {
+            width: 512,
+            height: 512,
+            mip_levels: 1,
+            ty: TextureType::Color,
+            format: Format::R8G8B8A8_SRGB,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureType {
     Color,
     Depth,
@@ -24,19 +54,22 @@ pub struct Texture {
 }
 
 impl Texture {
-    /// Loads a color texture from an image file
-    /// Uses mipmapping
+    /// Loads a color texture from an image file.
+    /// Uses the width and height of the loaded image, no resizing.
+    /// Uses mipmapping.
     pub fn load<P: AsRef<Path>>(context: Rc<VulkanContext>, path: P) -> Result<Self, Error> {
         let image =
             stb::Image::load(&path, 4).ok_or(Error::ImageError(path.as_ref().to_owned()))?;
 
         let texture = Self::new(
             context,
-            TextureType::Color,
-            vk::Format::R8G8B8A8_SRGB,
-            image.width() as _,
-            image.height() as _,
-            true,
+            TextureInfo {
+                width: image.width(),
+                height: image.height(),
+                mip_levels: 0,
+                ty: TextureType::Color,
+                format: vk::Format::R8G8B8A8_SRGB,
+            },
         )?;
 
         let size = image.width() as u64 * image.height() as u64 * 4;
@@ -44,23 +77,20 @@ impl Texture {
         Ok(texture)
     }
 
-    /// Creates a texture from raw pixels
-    /// pixels are of format R8G8B8A8
-    pub fn new(
-        context: Rc<VulkanContext>,
-        ty: TextureType,
-        format: vk::Format,
-        width: u32,
-        height: u32,
-        use_mipmapping: bool,
-    ) -> Result<Self, Error> {
-        let mip_levels = if use_mipmapping {
-            calculate_mip_levels(width, height)
-        } else {
-            1
-        };
+    /// Creates a texture from provided raw pixels
+    /// Note, raw pixels must match format, width, and height
+    pub fn new(context: Rc<VulkanContext>, info: TextureInfo) -> Result<Self, Error> {
+        let mut mip_levels = calculate_mip_levels(info.width, info.height);
 
-        let vk_usage = match ty {
+        // Don't use more mip_levels than info
+        if info.mip_levels != 0 {
+            mip_levels = mip_levels.min(info.mip_levels)
+        }
+
+        // Override mip levels
+        let info = TextureInfo { mip_levels, ..info };
+
+        let vk_usage = match info.ty {
             TextureType::Color => vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
             TextureType::Depth => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         } | if mip_levels > 1 {
@@ -77,13 +107,13 @@ impl Texture {
         let image_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
-                width,
-                height,
+                width: info.width,
+                height: info.height,
                 depth: 1,
             })
             .mip_levels(mip_levels)
             .array_layers(1)
-            .format(format)
+            .format(info.format)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(vk_usage)
@@ -100,31 +130,18 @@ impl Texture {
                 ..Default::default()
             },
         )?;
-        Self::from_image(
-            context,
-            ty,
-            width,
-            height,
-            mip_levels,
-            format,
-            image,
-            Some(allocation),
-        )
+        Self::from_image(context, info, image, Some(allocation))
     }
 
     /// Creates a texture from an already existing VkImage
     /// If allocation is provided, the image will be destroyed along with self
     pub fn from_image(
         context: Rc<VulkanContext>,
-        ty: TextureType,
-        width: u32,
-        height: u32,
-        mip_levels: u32,
-        format: vk::Format,
+        info: TextureInfo,
         image: vk::Image,
         allocation: Option<vk_mem::Allocation>,
     ) -> Result<Self, Error> {
-        let aspect_mask = match ty {
+        let aspect_mask = match info.ty {
             TextureType::Color => vk::ImageAspectFlags::COLOR,
             TextureType::Depth => vk::ImageAspectFlags::DEPTH,
         };
@@ -132,11 +149,11 @@ impl Texture {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
-            .format(format)
+            .format(info.format)
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask,
                 base_mip_level: 0,
-                level_count: mip_levels,
+                level_count: info.mip_levels,
                 base_array_layer: 0,
                 layer_count: 1,
             });
@@ -147,10 +164,10 @@ impl Texture {
             context,
             image,
             image_view,
-            width,
-            height,
-            mip_levels,
-            format,
+            width: info.width,
+            height: info.height,
+            mip_levels: info.mip_levels,
+            format: info.format,
             allocation,
         })
     }
