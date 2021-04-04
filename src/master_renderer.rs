@@ -3,23 +3,25 @@ use ash::vk;
 use log::info;
 use ultraviolet::mat::*;
 use ultraviolet::vec::*;
-use vulkan_sandbox::mesh;
-use vulkan_sandbox::mesh::Mesh;
+use vulkan_sandbox::{
+    mesh,
+    vulkan::{
+        device, fence, sampler, semaphore, Pipeline, PipelineLayout, Sampler, SamplerInfo,
+        Texture, VulkanContext,
+    },
+};
+use vulkan_sandbox::{mesh::Mesh, vulkan::RenderPass};
 
 use vulkan_sandbox::vulkan;
 
-use vulkan::context::VulkanContext;
 use vulkan::swapchain;
 use vulkan::{Buffer, BufferType, BufferUsage, VertexDesc};
 
 use vulkan::commands::*;
 use vulkan::descriptors;
 use vulkan::descriptors::DescriptorPool;
-use vulkan::framebuffer::*;
-use vulkan::pipeline::*;
-use vulkan::renderpass::*;
 use vulkan::swapchain::*;
-use vulkan::*;
+use vulkan::Framebuffer;
 
 use glfw;
 use std::{error::Error, fs::File, rc::Rc};
@@ -123,7 +125,7 @@ pub struct MasterRenderer {
     swapchain_loader: Rc<ash::extensions::khr::Swapchain>,
     swapchain: Swapchain,
     // Framebuffers to the actual swapchain images
-    pipeline_layout: PipelineLayout,
+    pipeline_layout: vulkan::PipelineLayout,
     pipeline: Pipeline,
 
     in_flight_fences: ArrayVec<[vk::Fence; FRAMES_IN_FLIGHT]>,

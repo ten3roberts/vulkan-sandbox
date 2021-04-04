@@ -18,6 +18,7 @@ pub struct SamplerInfo {
     /// Filter mode used for oversampling when there are more texels than pixels,
     /// e.g; scaling down
     pub min_filter: vk::Filter,
+    /// Set to true to map from 0..size instead of 0..1
     pub unnormalized_coordinates: bool,
     /// From 1.0 to 16.0
     /// Anisotropy is automatically disabled if value is set to 1.0

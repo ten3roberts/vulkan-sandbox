@@ -109,8 +109,6 @@ fn rate_physical_device(
             .to_string()
     };
 
-    log::debug!("Iterating device: {}", name);
-
     // Current device does not support one or more extensions
     if !get_missing_extensions(instance, physical_device, extensions)
         .ok()?

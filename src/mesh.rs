@@ -1,11 +1,13 @@
-use std::{iter::repeat, mem, rc::Rc};
-
 use ash::vk;
 use gltf::{buffer, Semantic};
+use std::iter::repeat;
+use std::mem;
+use std::rc::Rc;
+use thiserror::Error;
 use ultraviolet::{Vec2, Vec3};
 
 use crate::vulkan::{self, VulkanContext};
-use vulkan::buffer::{Buffer, BufferType, BufferUsage};
+use vulkan::{Buffer, BufferType, BufferUsage};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vertex {
@@ -62,6 +64,14 @@ impl vulkan::VertexDesc for Vertex {
     }
 }
 
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("{0}")]
+    VulkanError(#[from] vulkan::Error),
+    #[error("Unable to load resource using sparse buffer accessor")]
+    SparseAccessor,
+}
+
 pub struct Mesh {
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -74,7 +84,7 @@ impl Mesh {
         context: Rc<VulkanContext>,
         vertices: &[Vertex],
         indices: &[u32],
-    ) -> Result<Self, vulkan::Error> {
+    ) -> Result<Self, Error> {
         let vertex_buffer = Buffer::new(
             context.clone(),
             BufferType::Vertex,
@@ -101,7 +111,7 @@ impl Mesh {
         normals: &[Vec3],
         texcoords: &[Vec2],
         indices: &[u32],
-    ) -> Result<Self, vulkan::Error> {
+    ) -> Result<Self, Error> {
         let mut vertices = Vec::with_capacity(positions.len());
 
         for i in 0..positions.len() {
@@ -115,17 +125,16 @@ impl Mesh {
         context: Rc<VulkanContext>,
         mesh: gltf::Mesh,
         buffers: &[buffer::Data],
-    ) -> Result<Self, vulkan::Error> {
+    ) -> Result<Self, Error> {
         let mut positions = Vec::new();
         let mut normals = Vec::new();
         let mut texcoords = Vec::new();
         let mut raw_indices = Vec::new();
 
         if let Some(primitive) = mesh.primitives().next() {
-            let indices_accessor = primitive.indices().unwrap();
-            let indices_view = indices_accessor.view().unwrap();
+            let indices_accessor = primitive.indices().ok_or(Error::SparseAccessor)?;
+            let indices_view = indices_accessor.view().ok_or(Error::SparseAccessor)?;
 
-            log::debug!("Index type size: {}", indices_accessor.size());
             raw_indices = match indices_accessor.size() {
                 2 => load_u16_as_u32(&indices_view, buffers),
                 4 => load_u32(&indices_view, buffers),
@@ -133,7 +142,7 @@ impl Mesh {
             };
 
             for (semantic, accessor) in primitive.attributes() {
-                let view = accessor.view().unwrap();
+                let view = accessor.view().ok_or(Error::SparseAccessor)?;
                 match semantic {
                     Semantic::Positions => positions = load_vec3(&view, buffers),
                     Semantic::Normals => normals = load_vec3(&view, buffers),
