@@ -22,6 +22,7 @@ impl Pipeline {
         renderpass: &RenderPass,
         vertex_binding: vk::VertexInputBindingDescription,
         vertex_attributes: &[vk::VertexInputAttributeDescription],
+        samples: vk::SampleCountFlags,
     ) -> Result<Self, Error>
     where
         R: Read + Seek,
@@ -93,7 +94,7 @@ impl Pipeline {
 
         let multisampling = vk::PipelineMultisampleStateCreateInfo::builder()
             .sample_shading_enable(false)
-            .rasterization_samples(vk::SampleCountFlags::TYPE_1)
+            .rasterization_samples(samples)
             .min_sample_shading(1.0)
             .alpha_to_coverage_enable(false)
             .alpha_to_one_enable(false);
@@ -175,7 +176,10 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new(device: Rc<Device>, set_layouts: &[vk::DescriptorSetLayout]) -> Result<Self, Error> {
+    pub fn new(
+        device: Rc<Device>,
+        set_layouts: &[vk::DescriptorSetLayout],
+    ) -> Result<Self, Error> {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(set_layouts)
             .push_constant_ranges(&[]);

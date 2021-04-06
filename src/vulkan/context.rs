@@ -30,6 +30,7 @@ pub struct VulkanContext {
     transfer_pool: Option<CommandPool>,
 
     limits: vk::PhysicalDeviceLimits,
+    msaa_samples: vk::SampleCountFlags,
 }
 
 impl VulkanContext {
@@ -78,6 +79,8 @@ impl VulkanContext {
             true,
         )?;
 
+        let msaa_samples = get_max_msaa_samples(limits.framebuffer_color_sample_counts);
+
         Ok(VulkanContext {
             _entry: entry,
             instance,
@@ -92,6 +95,7 @@ impl VulkanContext {
             allocator,
             transfer_pool: Some(transfer_pool),
             limits,
+            msaa_samples,
         })
     }
 
@@ -149,6 +153,11 @@ impl VulkanContext {
             .as_ref()
             .expect("Transfer pool is only None when dropped")
     }
+
+    /// Returns the maximum number of samples for framebuffer color attachments
+    pub fn msaa_samples(&self) -> vk::SampleCountFlags {
+        self.msaa_samples
+    }
 }
 
 impl Drop for VulkanContext {
@@ -170,5 +179,23 @@ impl Drop for VulkanContext {
 
         surface::destroy(&self.surface_loader, self.surface);
         instance::destroy(&self.instance);
+    }
+}
+
+fn get_max_msaa_samples(sample_counts: vk::SampleCountFlags) -> vk::SampleCountFlags {
+    if sample_counts.contains(vk::SampleCountFlags::TYPE_64) {
+        vk::SampleCountFlags::TYPE_64
+    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_64) {
+        vk::SampleCountFlags::TYPE_32
+    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_8) {
+        vk::SampleCountFlags::TYPE_16
+    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_4) {
+        vk::SampleCountFlags::TYPE_8
+    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_4) {
+        vk::SampleCountFlags::TYPE_4
+    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_2) {
+        vk::SampleCountFlags::TYPE_2
+    } else {
+        vk::SampleCountFlags::TYPE_1
     }
 }

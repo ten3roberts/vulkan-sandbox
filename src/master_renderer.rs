@@ -54,9 +54,9 @@ impl PerFrameData {
             renderer.context.device_ref(),
             &renderer.renderpass,
             &[
-                // renderer.swapchain.color_attachment().image_view(),
-                renderer.swapchain.image_views()[index],
+                renderer.swapchain.color_attachment().image_view(),
                 renderer.swapchain.depth_attachment().image_view(),
+                renderer.swapchain.image_views()[index],
             ],
             renderer.swapchain.extent(),
         )?;
@@ -114,8 +114,6 @@ impl PerFrameData {
         commandbuffer.end_renderpass();
         commandbuffer.end()?;
 
-        // Construct struct
-
         Ok(PerFrameData {
             uniformbuffer,
             descriptor_sets,
@@ -170,15 +168,13 @@ impl MasterRenderer {
         let renderpass_info = RenderPassInfo {
             attachments: &[
                 // Color attachment
-                AttachmentInfo {
-                    usage: vulkan::TextureUsage::ColorAttachment,
-                    format: swapchain.surface_format().format,
-                    samples: vk::SampleCountFlags::TYPE_1,
-                    store: StoreOp::STORE,
-                    load: LoadOp::CLEAR,
-                    initial_layout: ImageLayout::UNDEFINED,
-                    final_layout: ImageLayout::PRESENT_SRC_KHR,
-                },
+                AttachmentInfo::from_texture(
+                    swapchain.color_attachment(),
+                    LoadOp::CLEAR,
+                    StoreOp::STORE,
+                    ImageLayout::UNDEFINED,
+                    ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                ),
                 // Depth attachment
                 AttachmentInfo::from_texture(
                     swapchain.depth_attachment(),
@@ -187,13 +183,26 @@ impl MasterRenderer {
                     ImageLayout::UNDEFINED,
                     ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                 ),
+                // Present attachment
+                AttachmentInfo {
+                    usage: vulkan::TextureUsage::ColorAttachment,
+                    format: swapchain.surface_format().format,
+                    samples: vk::SampleCountFlags::TYPE_1,
+                    load: LoadOp::DONT_CARE,
+                    store: StoreOp::STORE,
+                    initial_layout: ImageLayout::UNDEFINED,
+                    final_layout: ImageLayout::PRESENT_SRC_KHR,
+                },
             ],
             subpasses: &[SubpassInfo {
                 color_attachments: &[AttachmentReference {
                     attachment: 0,
                     layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                 }],
-                resolve_attachments: &[],
+                resolve_attachments: &[AttachmentReference {
+                    attachment: 2,
+                    layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                }],
                 depth_attachment: Some(AttachmentReference {
                     attachment: 1,
                     layout: ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
@@ -218,8 +227,7 @@ impl MasterRenderer {
             &renderpass,
             mesh::Vertex::binding_description(),
             mesh::Vertex::attribute_descriptions(),
-            vk::SampleCountFlags::TYPE_1,
-            // context.msaa_samples(),
+            context.msaa_samples(),
         )?;
 
         let descriptor_pool = DescriptorPool::new(
@@ -404,7 +412,10 @@ impl MasterRenderer {
                             attachment: 0,
                             layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                         }],
-                        resolve_attachments: &[],
+                        resolve_attachments: &[AttachmentReference {
+                            attachment: 2,
+                            layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                        }],
                         depth_attachment: Some(AttachmentReference {
                             attachment: 1,
                             layout: ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
@@ -469,12 +480,6 @@ impl MasterRenderer {
 
             Err(e) => return Err(e.into()),
         };
-
-        // log::info!(
-        //     "Drawing frame: currentFrame: {}, image_index: {}",
-        //     self.current_frame,
-        //     image_index
-        // );
 
         // Extract data for this image in swapchain
         let data = &mut self.per_frame_data[image_index as usize];

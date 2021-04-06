@@ -173,8 +173,7 @@ impl Swapchain {
             .map(|image| image_view::create(context.device(), *image, surface_format.format))
             .collect::<Result<_, _>>()?;
 
-        // let msaa_samples = context.msaa_samples();
-        let msaa_samples = vk::SampleCountFlags::TYPE_1;
+        let msaa_samples = context.msaa_samples();
 
         let color_attachment = Texture::new(
             context.clone(),
