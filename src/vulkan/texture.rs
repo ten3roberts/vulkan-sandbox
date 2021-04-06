@@ -6,6 +6,7 @@ use ash::vk;
 use super::{buffer, commands::*, context::VulkanContext, Error};
 
 pub use vk::Format;
+pub use vk::SampleCountFlags;
 
 /// Specifies texture creation info.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -20,6 +21,7 @@ pub struct TextureInfo {
     pub ty: TextureType,
     /// The pixel format.
     pub format: Format,
+    pub samples: SampleCountFlags,
 }
 
 impl Default for TextureInfo {
@@ -28,16 +30,18 @@ impl Default for TextureInfo {
             width: 512,
             height: 512,
             mip_levels: 1,
-            ty: TextureType::Color,
+            ty: TextureType::Sampled,
             format: Format::R8G8B8A8_SRGB,
+            samples: SampleCountFlags::TYPE_1,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureType {
-    Color,
-    Depth,
+    Sampled,
+    ColorAttachment,
+    DepthAttachment,
 }
 
 // Represents a texture combining an image and image view
@@ -51,6 +55,8 @@ pub struct Texture {
     width: u32,
     height: u32,
     mip_levels: u32,
+    samples: vk::SampleCountFlags,
+    ty: TextureType,
 }
 
 impl Texture {
@@ -67,8 +73,7 @@ impl Texture {
                 width: image.width(),
                 height: image.height(),
                 mip_levels: 0,
-                ty: TextureType::Color,
-                format: vk::Format::R8G8B8A8_SRGB,
+                ..Default::default()
             },
         )?;
 
@@ -80,7 +85,14 @@ impl Texture {
     /// Creates a texture from provided raw pixels
     /// Note, raw pixels must match format, width, and height
     pub fn new(context: Rc<VulkanContext>, info: TextureInfo) -> Result<Self, Error> {
+        // Re-alias as mutable
+        let mut info = info;
         let mut mip_levels = calculate_mip_levels(info.width, info.height);
+
+        // Multisampled images cannot use more than one miplevel
+        if info.samples != vk::SampleCountFlags::TYPE_1 {
+            info.mip_levels = 1;
+        }
 
         // Don't use more mip_levels than info
         if info.mip_levels != 0 {
@@ -88,11 +100,17 @@ impl Texture {
         }
 
         // Override mip levels
-        let info = TextureInfo { mip_levels, ..info };
+        info.mip_levels = mip_levels;
+        log::debug!("Texture info: {:#?}", info);
 
         let vk_usage = match info.ty {
-            TextureType::Color => vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-            TextureType::Depth => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            TextureType::Sampled => {
+                vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED
+            }
+            TextureType::ColorAttachment => {
+                vk::ImageUsageFlags::TRANSIENT_ATTACHMENT | vk::ImageUsageFlags::COLOR_ATTACHMENT
+            }
+            TextureType::DepthAttachment => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         } | if mip_levels > 1 {
             vk::ImageUsageFlags::TRANSFER_SRC
         } else {
@@ -118,7 +136,7 @@ impl Texture {
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(vk_usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .samples(vk::SampleCountFlags::TYPE_1);
+            .samples(info.samples);
 
         let allocator = context.allocator();
 
@@ -142,8 +160,9 @@ impl Texture {
         allocation: Option<vk_mem::Allocation>,
     ) -> Result<Self, Error> {
         let aspect_mask = match info.ty {
-            TextureType::Color => vk::ImageAspectFlags::COLOR,
-            TextureType::Depth => vk::ImageAspectFlags::DEPTH,
+            TextureType::Sampled => vk::ImageAspectFlags::COLOR,
+            TextureType::ColorAttachment => vk::ImageAspectFlags::COLOR,
+            TextureType::DepthAttachment => vk::ImageAspectFlags::DEPTH,
         };
 
         let create_info = vk::ImageViewCreateInfo::builder()
@@ -168,6 +187,8 @@ impl Texture {
             height: info.height,
             mip_levels: info.mip_levels,
             format: info.format,
+            samples: info.samples,
+            ty: info.ty,
             allocation,
         })
     }
@@ -246,6 +267,16 @@ impl Texture {
 
     pub fn mip_levels(&self) -> u32 {
         self.mip_levels
+    }
+
+    /// Get a reference to the texture's samples.
+    pub fn samples(&self) -> vk::SampleCountFlags {
+        self.samples
+    }
+
+    /// Get a reference to the texture's type
+    pub fn ty(&self) -> TextureType {
+        self.ty
     }
 }
 

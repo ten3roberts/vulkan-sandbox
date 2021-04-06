@@ -3,12 +3,16 @@ use ash::vk;
 use log::info;
 use ultraviolet::mat::*;
 use ultraviolet::vec::*;
+use vulkan_sandbox::vulkan::fence;
+use vulkan_sandbox::vulkan::pipeline::*;
+use vulkan_sandbox::vulkan::renderpass::*;
+use vulkan_sandbox::vulkan::sampler;
+use vulkan_sandbox::vulkan::sampler::*;
+use vulkan_sandbox::vulkan::Texture;
+use vulkan_sandbox::vulkan::VulkanContext;
 use vulkan_sandbox::{
     mesh,
-    vulkan::{
-        device, fence, sampler, semaphore, Pipeline, PipelineLayout, Sampler, SamplerInfo,
-        Texture, VulkanContext,
-    },
+    vulkan::{device, semaphore},
 };
 use vulkan_sandbox::{mesh::Mesh, vulkan::RenderPass};
 
@@ -46,10 +50,15 @@ struct PerFrameData {
 
 impl PerFrameData {
     fn new(renderer: &MasterRenderer, index: usize) -> Result<Self, vulkan::Error> {
+        log::debug!(
+            "Color attachment samples: {:?}",
+            renderer.swapchain.color_attachment().samples()
+        );
         let framebuffer = Framebuffer::new(
             renderer.context.device_ref(),
             &renderer.renderpass,
             &[
+                // renderer.swapchain.color_attachment().image_view(),
                 renderer.swapchain.image_views()[index],
                 renderer.swapchain.depth_attachment().image_view(),
             ],
@@ -162,11 +171,41 @@ impl MasterRenderer {
 
         let swapchain = Swapchain::new(context.clone(), Rc::clone(&swapchain_loader), &window)?;
 
-        let renderpass = RenderPass::new(
-            context.device_ref(),
-            swapchain.surface_format().format,
-            swapchain.depth_format(),
-        )?;
+        let renderpass_info = RenderPassInfo {
+            attachments: &[
+                // Color attachment
+                AttachmentInfo {
+                    ty: vulkan::TextureType::ColorAttachment,
+                    format: swapchain.surface_format().format,
+                    samples: vk::SampleCountFlags::TYPE_1,
+                    store: StoreOp::STORE,
+                    load: LoadOp::CLEAR,
+                    initial_layout: ImageLayout::UNDEFINED,
+                    final_layout: ImageLayout::PRESENT_SRC_KHR,
+                },
+                // Depth attachment
+                AttachmentInfo::from_texture(
+                    swapchain.depth_attachment(),
+                    LoadOp::CLEAR,
+                    StoreOp::DONT_CARE,
+                    ImageLayout::UNDEFINED,
+                    ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                ),
+            ],
+            subpasses: &[SubpassInfo {
+                color_attachments: &[AttachmentReference {
+                    attachment: 0,
+                    layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                }],
+                resolve_attachments: &[],
+                depth_attachment: Some(AttachmentReference {
+                    attachment: 1,
+                    layout: ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                }),
+            }],
+        };
+
+        let renderpass = RenderPass::new(context.device_ref(), &renderpass_info)?;
 
         let vs = File::open("./data/shaders/default.vert.spv")?;
         let fs = File::open("./data/shaders/default.frag.spv")?;
@@ -183,6 +222,8 @@ impl MasterRenderer {
             &renderpass,
             mesh::Vertex::binding_description(),
             mesh::Vertex::attribute_descriptions(),
+            vk::SampleCountFlags::TYPE_1,
+            // context.msaa_samples(),
         )?;
 
         let descriptor_pool = DescriptorPool::new(
@@ -333,8 +374,47 @@ impl MasterRenderer {
             info!("Surface format changed");
             self.renderpass = RenderPass::new(
                 self.context.device_ref(),
-                self.swapchain.surface_format().format,
-                self.swapchain.depth_format(),
+                &RenderPassInfo {
+                    attachments: &[
+                        // Color attachment
+                        AttachmentInfo::from_texture(
+                            self.swapchain.color_attachment(),
+                            LoadOp::CLEAR,
+                            StoreOp::STORE,
+                            ImageLayout::UNDEFINED,
+                            ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                        ),
+                        // Depth attachment
+                        AttachmentInfo::from_texture(
+                            self.swapchain.depth_attachment(),
+                            LoadOp::CLEAR,
+                            StoreOp::DONT_CARE,
+                            ImageLayout::UNDEFINED,
+                            ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                        ),
+                        // Resolve attachment
+                        AttachmentInfo {
+                            ty: vulkan::TextureType::ColorAttachment,
+                            format: self.swapchain.surface_format().format,
+                            samples: vk::SampleCountFlags::TYPE_1,
+                            store: StoreOp::STORE,
+                            load: LoadOp::DONT_CARE,
+                            initial_layout: ImageLayout::UNDEFINED,
+                            final_layout: ImageLayout::PRESENT_SRC_KHR,
+                        },
+                    ],
+                    subpasses: &[SubpassInfo {
+                        color_attachments: &[AttachmentReference {
+                            attachment: 0,
+                            layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                        }],
+                        resolve_attachments: &[],
+                        depth_attachment: Some(AttachmentReference {
+                            attachment: 1,
+                            layout: ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                        }),
+                    }],
+                },
             )?;
         }
 
@@ -350,6 +430,7 @@ impl MasterRenderer {
             &self.renderpass,
             mesh::Vertex::binding_description(),
             mesh::Vertex::attribute_descriptions(),
+            self.context.msaa_samples(),
         )?;
 
         self.commandpool.reset(false)?;
