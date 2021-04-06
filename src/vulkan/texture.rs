@@ -18,7 +18,7 @@ pub struct TextureInfo {
     /// A value of zero uses the maximum mip levels.
     pub mip_levels: u32,
     /// The type/aspect of texture.
-    pub ty: TextureType,
+    pub usage: TextureUsage,
     /// The pixel format.
     pub format: Format,
     pub samples: SampleCountFlags,
@@ -30,7 +30,7 @@ impl Default for TextureInfo {
             width: 512,
             height: 512,
             mip_levels: 1,
-            ty: TextureType::Sampled,
+            usage: TextureUsage::Sampled,
             format: Format::R8G8B8A8_SRGB,
             samples: SampleCountFlags::TYPE_1,
         }
@@ -38,9 +38,12 @@ impl Default for TextureInfo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextureType {
+pub enum TextureUsage {
+    /// The most common usage. Texture is sampled in shader and transferred from CPU rarely.
     Sampled,
+    /// Texture is used as a color attachment. Lazily allocates image when possible.
     ColorAttachment,
+    /// Texture is used as a depth attachment. Lazily allocates image when possible.
     DepthAttachment,
 }
 
@@ -56,7 +59,7 @@ pub struct Texture {
     height: u32,
     mip_levels: u32,
     samples: vk::SampleCountFlags,
-    ty: TextureType,
+    usage: TextureUsage,
 }
 
 impl Texture {
@@ -103,14 +106,14 @@ impl Texture {
         info.mip_levels = mip_levels;
         log::debug!("Texture info: {:#?}", info);
 
-        let vk_usage = match info.ty {
-            TextureType::Sampled => {
+        let vk_usage = match info.usage {
+            TextureUsage::Sampled => {
                 vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED
             }
-            TextureType::ColorAttachment => {
+            TextureUsage::ColorAttachment => {
                 vk::ImageUsageFlags::TRANSIENT_ATTACHMENT | vk::ImageUsageFlags::COLOR_ATTACHMENT
             }
-            TextureType::DepthAttachment => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            TextureUsage::DepthAttachment => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         } | if mip_levels > 1 {
             vk::ImageUsageFlags::TRANSFER_SRC
         } else {
@@ -119,8 +122,6 @@ impl Texture {
 
         let memory_usage = vk_mem::MemoryUsage::GpuOnly;
         let flags = vk_mem::AllocationCreateFlags::NONE;
-
-        log::debug!("Mip levels: {}", mip_levels);
 
         let image_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
@@ -159,10 +160,10 @@ impl Texture {
         image: vk::Image,
         allocation: Option<vk_mem::Allocation>,
     ) -> Result<Self, Error> {
-        let aspect_mask = match info.ty {
-            TextureType::Sampled => vk::ImageAspectFlags::COLOR,
-            TextureType::ColorAttachment => vk::ImageAspectFlags::COLOR,
-            TextureType::DepthAttachment => vk::ImageAspectFlags::DEPTH,
+        let aspect_mask = match info.usage {
+            TextureUsage::Sampled => vk::ImageAspectFlags::COLOR,
+            TextureUsage::ColorAttachment => vk::ImageAspectFlags::COLOR,
+            TextureUsage::DepthAttachment => vk::ImageAspectFlags::DEPTH,
         };
 
         let create_info = vk::ImageViewCreateInfo::builder()
@@ -188,7 +189,7 @@ impl Texture {
             mip_levels: info.mip_levels,
             format: info.format,
             samples: info.samples,
-            ty: info.ty,
+            usage: info.usage,
             allocation,
         })
     }
@@ -275,8 +276,8 @@ impl Texture {
     }
 
     /// Get a reference to the texture's type
-    pub fn ty(&self) -> TextureType {
-        self.ty
+    pub fn usage(&self) -> TextureUsage {
+        self.usage
     }
 }
 

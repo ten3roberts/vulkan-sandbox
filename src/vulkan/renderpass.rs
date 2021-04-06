@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{Error, Texture, TextureType};
+use super::{Error, Texture, TextureUsage};
 use arrayvec::ArrayVec;
 use ash::Device;
 use ash::{version::DeviceV1_0, vk::SampleCountFlags};
@@ -20,7 +20,7 @@ pub const MAX_SUBPASSES: usize = 8;
 /// Note: the actual images are provided in the frambuffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AttachmentInfo {
-    pub ty: TextureType,
+    pub usage: TextureUsage,
     /// Attachment image format
     pub format: Format,
     /// Number of samples for attachment
@@ -39,7 +39,7 @@ pub struct AttachmentInfo {
 impl Default for AttachmentInfo {
     fn default() -> Self {
         Self {
-            ty: TextureType::ColorAttachment,
+            usage: TextureUsage::ColorAttachment,
             format: Format::R8G8B8A8_SRGB,
             samples: SampleCountFlags::TYPE_1,
             store: StoreOp::STORE,
@@ -61,7 +61,7 @@ impl AttachmentInfo {
         final_layout: ImageLayout,
     ) -> Self {
         Self {
-            ty: texture.ty(),
+            usage: texture.usage(),
             format: texture.format(),
             samples: texture.samples(),
             load,

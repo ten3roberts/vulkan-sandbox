@@ -50,10 +50,6 @@ struct PerFrameData {
 
 impl PerFrameData {
     fn new(renderer: &MasterRenderer, index: usize) -> Result<Self, vulkan::Error> {
-        log::debug!(
-            "Color attachment samples: {:?}",
-            renderer.swapchain.color_attachment().samples()
-        );
         let framebuffer = Framebuffer::new(
             renderer.context.device_ref(),
             &renderer.renderpass,
@@ -175,7 +171,7 @@ impl MasterRenderer {
             attachments: &[
                 // Color attachment
                 AttachmentInfo {
-                    ty: vulkan::TextureType::ColorAttachment,
+                    usage: vulkan::TextureUsage::ColorAttachment,
                     format: swapchain.surface_format().format,
                     samples: vk::SampleCountFlags::TYPE_1,
                     store: StoreOp::STORE,
@@ -394,7 +390,7 @@ impl MasterRenderer {
                         ),
                         // Resolve attachment
                         AttachmentInfo {
-                            ty: vulkan::TextureType::ColorAttachment,
+                            usage: vulkan::TextureUsage::ColorAttachment,
                             format: self.swapchain.surface_format().format,
                             samples: vk::SampleCountFlags::TYPE_1,
                             store: StoreOp::STORE,

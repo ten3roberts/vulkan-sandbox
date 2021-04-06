@@ -101,6 +101,7 @@ pub struct Swapchain {
     swapchain_khr: vk::SwapchainKHR,
     images: Vec<vk::Image>,
     image_views: Vec<vk::ImageView>,
+    color_attachment: Texture,
     depth_attachment: Texture,
     extent: vk::Extent2D,
     surface_format: vk::SurfaceFormatKHR,
@@ -172,14 +173,30 @@ impl Swapchain {
             .map(|image| image_view::create(context.device(), *image, surface_format.format))
             .collect::<Result<_, _>>()?;
 
+        // let msaa_samples = context.msaa_samples();
+        let msaa_samples = vk::SampleCountFlags::TYPE_1;
+
+        let color_attachment = Texture::new(
+            context.clone(),
+            TextureInfo {
+                width: extent.width,
+                height: extent.height,
+                usage: super::TextureUsage::ColorAttachment,
+                format: surface_format.format,
+                samples: msaa_samples,
+                ..Default::default()
+            },
+        )?;
+
         let depth_attachment = Texture::new(
             context.clone(),
             TextureInfo {
                 width: extent.width,
                 height: extent.height,
-                ty: super::TextureType::Depth,
+                usage: super::TextureUsage::DepthAttachment,
                 format: vk::Format::D32_SFLOAT,
-                mip_levels: 1,
+                samples: msaa_samples,
+                ..Default::default()
             },
         )?;
 
@@ -188,6 +205,7 @@ impl Swapchain {
             swapchain_khr,
             images,
             image_views,
+            color_attachment,
             depth_attachment,
             surface_format,
             swapchain_loader,
@@ -255,6 +273,11 @@ impl Swapchain {
 
     pub fn extent(&self) -> vk::Extent2D {
         self.extent
+    }
+
+    /// Get a reference to the swapchain's color attachment.
+    pub fn color_attachment(&self) -> &Texture {
+        &self.color_attachment
     }
 }
 
