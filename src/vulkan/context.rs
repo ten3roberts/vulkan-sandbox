@@ -51,6 +51,7 @@ impl VulkanContext {
         let surface = surface::create(&instance, &window)?;
         let (device, pdevice_info) =
             device::create(&instance, &surface_loader, surface, instance::get_layers())?;
+        log::debug!("Using device: {}", pdevice_info.name);
 
         // Get the physical device limits
         let limits = device::get_limits(&instance, pdevice_info.physical_device);

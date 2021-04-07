@@ -8,7 +8,7 @@ use vulkan_sandbox::vulkan::pipeline::*;
 use vulkan_sandbox::vulkan::renderpass::*;
 use vulkan_sandbox::vulkan::sampler;
 use vulkan_sandbox::vulkan::sampler::*;
-use vulkan_sandbox::vulkan::Texture;
+use vulkan_sandbox::vulkan::texture::*;
 use vulkan_sandbox::vulkan::VulkanContext;
 use vulkan_sandbox::{
     mesh,
@@ -54,9 +54,9 @@ impl PerFrameData {
             renderer.context.device_ref(),
             &renderer.renderpass,
             &[
-                renderer.swapchain.color_attachment().image_view(),
-                renderer.swapchain.depth_attachment().image_view(),
-                renderer.swapchain.image_views()[index],
+                &renderer.color_attachment,
+                &renderer.depth_attachment,
+                renderer.swapchain.image(index),
             ],
             renderer.swapchain.extent(),
         )?;
@@ -149,6 +149,10 @@ pub struct MasterRenderer {
     current_frame: usize,
     should_resize: bool,
 
+    // Multisampled color and depth renderpass attachments
+    color_attachment: Texture,
+    depth_attachment: Texture,
+
     texture: Texture,
     sampler: Sampler,
 
@@ -165,11 +169,35 @@ impl MasterRenderer {
 
         let swapchain = Swapchain::new(context.clone(), Rc::clone(&swapchain_loader), &window)?;
 
+        let color_attachment = Texture::new(
+            context.clone(),
+            TextureInfo {
+                width: swapchain.extent().width,
+                height: swapchain.extent().height,
+                mip_levels: 1,
+                usage: TextureUsage::ColorAttachment,
+                format: swapchain.surface_format().format,
+                samples: context.msaa_samples(),
+            },
+        )?;
+
+        let depth_attachment = Texture::new(
+            context.clone(),
+            TextureInfo {
+                width: swapchain.extent().width,
+                height: swapchain.extent().height,
+                mip_levels: 1,
+                usage: TextureUsage::DepthAttachment,
+                format: Format::D32_SFLOAT,
+                samples: context.msaa_samples(),
+            },
+        )?;
+
         let renderpass_info = RenderPassInfo {
             attachments: &[
                 // Color attachment
                 AttachmentInfo::from_texture(
-                    swapchain.color_attachment(),
+                    &color_attachment,
                     LoadOp::CLEAR,
                     StoreOp::STORE,
                     ImageLayout::UNDEFINED,
@@ -177,7 +205,7 @@ impl MasterRenderer {
                 ),
                 // Depth attachment
                 AttachmentInfo::from_texture(
-                    swapchain.depth_attachment(),
+                    &depth_attachment,
                     LoadOp::CLEAR,
                     StoreOp::DONT_CARE,
                     ImageLayout::UNDEFINED,
@@ -339,6 +367,8 @@ impl MasterRenderer {
             texture,
             sampler,
             mesh,
+            color_attachment,
+            depth_attachment,
             set_layout,
             descriptor_pool,
             per_frame_data: Vec::new(),
@@ -382,7 +412,7 @@ impl MasterRenderer {
                     attachments: &[
                         // Color attachment
                         AttachmentInfo::from_texture(
-                            self.swapchain.color_attachment(),
+                            &self.color_attachment,
                             LoadOp::CLEAR,
                             StoreOp::STORE,
                             ImageLayout::UNDEFINED,
@@ -390,7 +420,7 @@ impl MasterRenderer {
                         ),
                         // Depth attachment
                         AttachmentInfo::from_texture(
-                            self.swapchain.depth_attachment(),
+                            &self.depth_attachment,
                             LoadOp::CLEAR,
                             StoreOp::DONT_CARE,
                             ImageLayout::UNDEFINED,

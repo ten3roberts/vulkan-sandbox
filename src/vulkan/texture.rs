@@ -104,7 +104,6 @@ impl Texture {
 
         // Override mip levels
         info.mip_levels = mip_levels;
-        log::debug!("Texture info: {:#?}", info);
 
         let vk_usage = match info.usage {
             TextureUsage::Sampled => {
@@ -238,17 +237,6 @@ impl Texture {
             self.mip_levels,
         )?;
 
-        // Done in bitmap
-        // Transition back to initial layout
-        // transition_layout(
-        //     transfer_pool,
-        //     graphics_queue,
-        //     self.image,
-        //     self.mip_levels,
-        //     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        //     vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        // )?;
-
         // Destroy the staging buffer
         allocator.destroy_buffer(staging_buffer, &staging_allocation)?;
         Ok(())
@@ -278,6 +266,18 @@ impl Texture {
     /// Get a reference to the texture's type
     pub fn usage(&self) -> TextureUsage {
         self.usage
+    }
+}
+
+impl AsRef<vk::ImageView> for Texture {
+    fn as_ref(&self) -> &vk::ImageView {
+        &self.image_view
+    }
+}
+
+impl AsRef<vk::Image> for Texture {
+    fn as_ref(&self) -> &vk::Image {
+        &self.image
     }
 }
 

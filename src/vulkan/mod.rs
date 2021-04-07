@@ -9,7 +9,6 @@ pub mod entry;
 mod error;
 pub mod fence;
 pub mod framebuffer;
-pub mod image_view;
 pub mod instance;
 pub mod pipeline;
 pub mod renderpass;
