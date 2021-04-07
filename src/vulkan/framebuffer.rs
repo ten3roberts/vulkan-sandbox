@@ -1,25 +1,35 @@
 use std::rc::Rc;
 
-use super::{renderpass::RenderPass, Error};
+use super::{renderpass::MAX_ATTACHMENTS, Error, RenderPass};
+use arrayvec::ArrayVec;
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
 
+/// A framebuffer wraps one or more Textures contained in a renderpass.
+/// The framebuffer does not own the Textures and as such the user must ensure the referenced
+/// textures are kept alive. This is because a texture can be used in several framebuffers
+/// simultaneously.
 pub struct Framebuffer {
     device: Rc<Device>,
     framebuffer: vk::Framebuffer,
 }
 
 impl Framebuffer {
-    pub fn new(
+    pub fn new<T: AsRef<vk::ImageView>>(
         device: Rc<Device>,
         renderpass: &RenderPass,
-        attachments: &[vk::ImageView],
+        attachments: &[T],
         extent: vk::Extent2D,
     ) -> Result<Self, Error> {
+        let attachment_views = attachments
+            .iter()
+            .map(|attachment| *attachment.as_ref())
+            .collect::<ArrayVec<[vk::ImageView; MAX_ATTACHMENTS]>>();
+
         let create_info = vk::FramebufferCreateInfo::builder()
             .render_pass(renderpass.renderpass())
-            .attachments(attachments)
+            .attachments(&attachment_views)
             .width(extent.width)
             .height(extent.height)
             .layers(1);

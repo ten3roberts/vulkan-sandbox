@@ -5,7 +5,7 @@ use ash::Device;
 use ash::Instance;
 use std::{cmp, rc::Rc};
 
-use super::{image_view, Error, Texture, TextureInfo, VulkanContext};
+use super::{Error, Texture, TextureInfo, VulkanContext};
 
 #[derive(Debug)]
 pub struct SwapchainSupport {
@@ -96,13 +96,9 @@ pub fn create_loader(instance: &Instance, device: &Device) -> SwapchainLoader {
 /// High level swapchain representation
 /// Implements Drop
 pub struct Swapchain {
-    context: Rc<VulkanContext>,
     swapchain_loader: Rc<SwapchainLoader>,
     swapchain_khr: vk::SwapchainKHR,
-    images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
-    color_attachment: Texture,
-    depth_attachment: Texture,
+    images: Vec<Texture>,
     extent: vk::Extent2D,
     surface_format: vk::SurfaceFormatKHR,
 }
@@ -142,8 +138,10 @@ impl Swapchain {
             };
 
         let surface_format = pick_format(&support.formats);
+
         let present_mode =
             pick_present_mode(&support.present_modes, vk::PresentModeKHR::IMMEDIATE);
+
         let extent = pick_extent(window, &support.capabilities);
 
         let create_info = vk::SwapchainCreateInfoKHR::builder()
@@ -167,45 +165,23 @@ impl Swapchain {
 
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain_khr)? };
 
-        // Create image views
-        let image_views = images
+        let image_info = TextureInfo {
+            width: extent.width,
+            height: extent.height,
+            mip_levels: 1,
+            usage: super::TextureUsage::ColorAttachment,
+            format: surface_format.format,
+            samples: vk::SampleCountFlags::TYPE_1,
+        };
+
+        let images = images
             .iter()
-            .map(|image| image_view::create(context.device(), *image, surface_format.format))
+            .map(|image| Texture::from_image(context.clone(), image_info, *image, None))
             .collect::<Result<_, _>>()?;
 
-        let msaa_samples = context.msaa_samples();
-
-        let color_attachment = Texture::new(
-            context.clone(),
-            TextureInfo {
-                width: extent.width,
-                height: extent.height,
-                usage: super::TextureUsage::ColorAttachment,
-                format: surface_format.format,
-                samples: msaa_samples,
-                ..Default::default()
-            },
-        )?;
-
-        let depth_attachment = Texture::new(
-            context.clone(),
-            TextureInfo {
-                width: extent.width,
-                height: extent.height,
-                usage: super::TextureUsage::DepthAttachment,
-                format: vk::Format::D32_SFLOAT,
-                samples: msaa_samples,
-                ..Default::default()
-            },
-        )?;
-
         Ok(Swapchain {
-            context,
             swapchain_khr,
             images,
-            image_views,
-            color_attachment,
-            depth_attachment,
             surface_format,
             swapchain_loader,
             extent,
@@ -246,47 +222,31 @@ impl Swapchain {
         Ok(suboptimal)
     }
 
-    // Getters
+    /// Returns the number of image in the swapchain. The same as `color_attachments`.len()
     pub fn image_count(&self) -> u32 {
-        self.images.len() as _
-    }
-    pub fn images(&self) -> &[vk::Image] {
-        &self.images
-    }
-
-    pub fn image_views(&self) -> &[vk::ImageView] {
-        &self.image_views
-    }
-
-    pub fn depth_attachment(&self) -> &Texture {
-        &self.depth_attachment
+        self.images.len() as u32
     }
 
     pub fn surface_format(&self) -> vk::SurfaceFormatKHR {
         self.surface_format
     }
 
-    pub fn depth_format(&self) -> vk::Format {
-        self.depth_attachment.format()
-    }
-
     pub fn extent(&self) -> vk::Extent2D {
         self.extent
     }
 
-    /// Get a reference to the swapchain's color attachment.
-    pub fn color_attachment(&self) -> &Texture {
-        &self.color_attachment
+    /// Get a reference to a swapchain image by index
+    pub fn image(&self, index: usize) -> &Texture {
+        &self.images[index]
+    }
+    /// Get a reference to the swapchain's images
+    pub fn images(&self) -> &Vec<Texture> {
+        &self.images
     }
 }
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
-        // Destroy image views
-        self.image_views
-            .iter()
-            .for_each(|view| image_view::destroy(self.context.device(), *view));
-
         // Destroy the swapchain
         unsafe {
             self.swapchain_loader
