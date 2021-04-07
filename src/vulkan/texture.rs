@@ -47,7 +47,9 @@ pub enum TextureUsage {
     DepthAttachment,
 }
 
-// Represents a texture combining an image and image view
+// Represents a texture combining an image and image view. A texture also stores its own width,
+// height, format, mipmapping levels and samples. Manages the deallocation of image memory unless
+// created manually without provided allocation using `from_image`.
 pub struct Texture {
     context: Rc<VulkanContext>,
     image: vk::Image,
@@ -278,6 +280,18 @@ impl AsRef<vk::ImageView> for Texture {
 impl AsRef<vk::Image> for Texture {
     fn as_ref(&self) -> &vk::Image {
         &self.image
+    }
+}
+
+impl Into<vk::ImageView> for &Texture {
+    fn into(self) -> vk::ImageView {
+        self.image_view
+    }
+}
+
+impl Into<vk::Image> for &Texture {
+    fn into(self) -> vk::Image {
+        self.image
     }
 }
 

@@ -300,6 +300,12 @@ impl AsRef<vk::Buffer> for Buffer {
     }
 }
 
+impl Into<vk::Buffer> for Buffer {
+    fn into(self) -> vk::Buffer {
+        self.buffer
+    }
+}
+
 impl Drop for Buffer {
     fn drop(&mut self) {
         let allocator = self.context.allocator();

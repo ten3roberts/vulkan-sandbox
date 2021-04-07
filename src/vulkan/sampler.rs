@@ -72,16 +72,22 @@ impl Sampler {
     }
 }
 
+impl AsRef<vk::Sampler> for Sampler {
+    fn as_ref(&self) -> &vk::Sampler {
+        &self.sampler
+    }
+}
+
+impl Into<vk::Sampler> for &Sampler {
+    fn into(self) -> vk::Sampler {
+        self.sampler
+    }
+}
+
 impl Drop for Sampler {
     fn drop(&mut self) {
         unsafe {
             self.context.device().destroy_sampler(self.sampler, None);
         }
-    }
-}
-
-impl AsRef<vk::Sampler> for Sampler {
-    fn as_ref(&self) -> &vk::Sampler {
-        &self.sampler
     }
 }
