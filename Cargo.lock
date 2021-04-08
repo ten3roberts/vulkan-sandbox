@@ -390,6 +390,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "smallvec"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
+
+[[package]]
 name = "stb"
 version = "0.1.0"
 dependencies = [
@@ -430,9 +436,9 @@ dependencies = [
 
 [[package]]
 name = "ultraviolet"
-version = "0.7.5"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6650a58414f856056ccc651abd3b9d80c384206250c3a621224497503a0f9f2"
+checksum = "499afe3577fbe0f46c44b85c3569fb00f5e536be3049a8a6cad134b3507e0fd4"
 dependencies = [
  "wide",
 ]
@@ -469,6 +475,7 @@ dependencies = [
  "glfw",
  "gltf",
  "log",
+ "smallvec",
  "stb",
  "thiserror",
  "ultraviolet",
@@ -477,9 +484,9 @@ dependencies = [
 
 [[package]]
 name = "wide"
-version = "0.5.5"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80b27c76ecc22bd81fe681d9c9eac81e002d7b7048105ee4608f57c4e92e9211"
+checksum = "2c51f160ef6333906fad7d31a2010d449148dd1a26bc377e0a1ace2cc9e1e1ee"
 dependencies = [
  "bytemuck",
  "safe_arch",

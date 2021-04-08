@@ -227,6 +227,10 @@ impl Swapchain {
         self.images.len() as u32
     }
 
+    pub fn image_format(&self) -> vk::Format {
+        self.surface_format.format
+    }
+
     pub fn surface_format(&self) -> vk::SurfaceFormatKHR {
         self.surface_format
     }

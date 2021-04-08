@@ -5,33 +5,18 @@ use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
 
-pub fn create_layout(device: &Device) -> Result<vk::DescriptorSetLayout, Error> {
-    let bindings = [
-        vk::DescriptorSetLayoutBinding {
-            binding: 0,
-            descriptor_count: 1,
-            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-            stage_flags: vk::ShaderStageFlags::VERTEX,
-            p_immutable_samplers: std::ptr::null(),
-        },
-        vk::DescriptorSetLayoutBinding {
-            binding: 1,
-            descriptor_count: 1,
-            descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            stage_flags: vk::ShaderStageFlags::FRAGMENT,
-            p_immutable_samplers: std::ptr::null(),
-        },
-    ];
+mod allocator;
+mod builder;
+mod layout;
 
-    let create_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+pub use allocator::*;
+pub use builder::*;
+pub use layout::*;
 
-    let layout = unsafe { device.create_descriptor_set_layout(&create_info, None)? };
-    Ok(layout)
-}
-
-pub fn destroy_layout(device: &Device, layout: vk::DescriptorSetLayout) {
-    unsafe { device.destroy_descriptor_set_layout(layout, None) }
-}
+/// Highest binding allowed for descriptor set. This is deliberately set low as the bindings should
+/// be kept as compact as possible.
+pub const MAX_BINDINGS: usize = 8;
+pub use vk::DescriptorSetLayoutBinding as DescriptorSetBinding;
 
 pub struct DescriptorPool {
     device: Rc<Device>,

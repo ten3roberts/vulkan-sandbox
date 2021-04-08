@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use ash::vk;
+use ash::vk::{self, ShaderStageFlags};
 use log::info;
 use ultraviolet::mat::*;
 use ultraviolet::vec::*;
@@ -23,7 +23,7 @@ use vulkan::{Buffer, BufferType, BufferUsage, VertexDesc};
 
 use vulkan::commands::*;
 use vulkan::descriptors;
-use vulkan::descriptors::DescriptorPool;
+use vulkan::descriptors::*;
 use vulkan::swapchain::*;
 use vulkan::Framebuffer;
 
@@ -41,28 +41,39 @@ struct UniformBufferObject {
 /// Represents data needed to be duplicated for each swapchain image
 struct PerFrameData {
     uniformbuffer: Buffer,
-    descriptor_sets: Vec<vk::DescriptorSet>,
+    set: vk::DescriptorSet,
     commandbuffer: CommandBuffer,
     framebuffer: Framebuffer,
     // The fence currently associated to this image_index
     image_in_flight: vk::Fence,
+    set_layout: vk::DescriptorSetLayout,
 }
 
 impl PerFrameData {
-    fn new(renderer: &MasterRenderer, index: usize) -> Result<Self, vulkan::Error> {
+    fn new(
+        context: Rc<VulkanContext>,
+        renderpass: &RenderPass,
+        color_attachment: &Texture,
+        depth_attachment: &Texture,
+        swapchain_image: &Texture,
+        descriptor_cache: &mut DescriptorLayoutCache,
+        descriptor_allocator: &mut DescriptorAllocator,
+        texture: &Texture,
+        sampler: &Sampler,
+        commandpool: &CommandPool,
+    ) -> Result<Self, vulkan::Error> {
+        let device = context.device();
+
         let framebuffer = Framebuffer::new(
-            renderer.context.device_ref(),
-            &renderer.renderpass,
-            &[
-                &renderer.color_attachment,
-                &renderer.depth_attachment,
-                renderer.swapchain.image(index),
-            ],
-            renderer.swapchain.extent(),
+            context.device_ref(),
+            &renderpass,
+            &[color_attachment, depth_attachment, swapchain_image],
+            swapchain_image.width(),
+            swapchain_image.height(),
         )?;
 
         let uniformbuffer = Buffer::new(
-            renderer.context.clone(),
+            context.clone(),
             BufferType::Uniform,
             BufferUsage::MappedPersistent,
             &[UniformBufferObject {
@@ -70,25 +81,46 @@ impl PerFrameData {
             }],
         )?;
 
-        let descriptor_sets = renderer.descriptor_pool.allocate(&[renderer.set_layout])?;
+        let mut set = Default::default();
+        let mut set_layout = Default::default();
 
-        descriptors::write(
-            renderer.context.device(),
-            descriptor_sets[0],
-            &uniformbuffer,
-            &renderer.texture,
-            &renderer.sampler,
-        );
+        descriptors::DescriptorBuilder::new()
+            .bind_uniform_buffer(0, ShaderStageFlags::VERTEX, &uniformbuffer)
+            .bind_combined_image_sampler(1, ShaderStageFlags::FRAGMENT, &texture, &sampler)
+            .build(device, descriptor_cache, descriptor_allocator, &mut set)?
+            .layout(descriptor_cache, &mut set_layout)?;
 
         // Create and record command buffers
-        let commandbuffer = renderer.commandpool.allocate(1)?.pop().unwrap();
+        let commandbuffer = commandpool.allocate(1)?.pop().unwrap();
+
+        Ok(PerFrameData {
+            uniformbuffer,
+            set,
+            framebuffer,
+            commandbuffer,
+            image_in_flight: vk::Fence::null(),
+            set_layout,
+        })
+    }
+
+    fn record(
+        &self,
+        pipeline: &Pipeline,
+        pipeline_layout: &PipelineLayout,
+        renderpass: &RenderPass,
+        mesh: &Mesh,
+        width: u32,
+        height: u32,
+    ) -> Result<(), vulkan::Error> {
+        let commandbuffer = &self.commandbuffer;
 
         commandbuffer.begin(Default::default())?;
 
         commandbuffer.begin_renderpass(
-            &renderer.renderpass,
-            &framebuffer,
-            renderer.swapchain.extent(),
+            &renderpass,
+            &self.framebuffer,
+            width,
+            height,
             // TODO Autogenerate clear color based on one value
             &[
                 vk::ClearValue {
@@ -105,22 +137,15 @@ impl PerFrameData {
             ],
         );
 
-        commandbuffer.bind_pipeline(&renderer.pipeline);
-        commandbuffer.bind_vertexbuffers(0, &[&renderer.mesh.vertex_buffer()]);
-        commandbuffer.bind_descriptor_sets(&renderer.pipeline_layout, 0, &descriptor_sets);
+        commandbuffer.bind_pipeline(pipeline);
+        commandbuffer.bind_vertexbuffers(0, &[&mesh.vertex_buffer()]);
+        commandbuffer.bind_descriptor_sets(&pipeline_layout, 0, &[self.set]);
 
-        commandbuffer.bind_indexbuffer(&renderer.mesh.index_buffer(), 0);
-        commandbuffer.draw_indexed(renderer.mesh.index_count(), 1, 0, 0, 0);
+        commandbuffer.bind_indexbuffer(&mesh.index_buffer(), 0);
+        commandbuffer.draw_indexed(mesh.index_count(), 1, 0, 0, 0);
         commandbuffer.end_renderpass();
         commandbuffer.end()?;
-
-        Ok(PerFrameData {
-            uniformbuffer,
-            descriptor_sets,
-            framebuffer,
-            commandbuffer,
-            image_in_flight: vk::Fence::null(),
-        })
+        Ok(())
     }
 }
 
@@ -140,8 +165,8 @@ pub struct MasterRenderer {
 
     mesh: Mesh,
 
-    set_layout: vk::DescriptorSetLayout,
-    descriptor_pool: DescriptorPool,
+    descriptor_cache: DescriptorLayoutCache,
+    descriptor_allocator: DescriptorAllocator,
 
     per_frame_data: Vec<PerFrameData>,
 
@@ -176,7 +201,7 @@ impl MasterRenderer {
                 height: swapchain.extent().height,
                 mip_levels: 1,
                 usage: TextureUsage::ColorAttachment,
-                format: swapchain.surface_format().format,
+                format: swapchain.image_format(),
                 samples: context.msaa_samples(),
             },
         )?;
@@ -193,77 +218,26 @@ impl MasterRenderer {
             },
         )?;
 
-        let renderpass_info = RenderPassInfo {
-            attachments: &[
-                // Color attachment
-                AttachmentInfo::from_texture(
-                    &color_attachment,
-                    LoadOp::CLEAR,
-                    StoreOp::STORE,
-                    ImageLayout::UNDEFINED,
-                    ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                ),
-                // Depth attachment
-                AttachmentInfo::from_texture(
-                    &depth_attachment,
-                    LoadOp::CLEAR,
-                    StoreOp::DONT_CARE,
-                    ImageLayout::UNDEFINED,
-                    ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                ),
-                // Present attachment
-                AttachmentInfo {
-                    usage: vulkan::TextureUsage::ColorAttachment,
-                    format: swapchain.surface_format().format,
-                    samples: vk::SampleCountFlags::TYPE_1,
-                    load: LoadOp::DONT_CARE,
-                    store: StoreOp::STORE,
-                    initial_layout: ImageLayout::UNDEFINED,
-                    final_layout: ImageLayout::PRESENT_SRC_KHR,
-                },
-            ],
-            subpasses: &[SubpassInfo {
-                color_attachments: &[AttachmentReference {
-                    attachment: 0,
-                    layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                }],
-                resolve_attachments: &[AttachmentReference {
-                    attachment: 2,
-                    layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                }],
-                depth_attachment: Some(AttachmentReference {
-                    attachment: 1,
-                    layout: ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                }),
-            }],
-        };
-
-        let renderpass = RenderPass::new(context.device_ref(), &renderpass_info)?;
+        let renderpass = create_renderpass(
+            context.device_ref(),
+            &color_attachment,
+            &depth_attachment,
+            swapchain.image_format(),
+        )?;
 
         let vs = File::open("./data/shaders/default.vert.spv")?;
         let fs = File::open("./data/shaders/default.frag.spv")?;
 
-        let set_layout = descriptors::create_layout(context.device())?;
-        let pipeline_layout = PipelineLayout::new(context.device_ref(), &[set_layout])?;
+        let mut descriptor_cache = DescriptorLayoutCache::new(context.device_ref());
 
-        let pipeline = Pipeline::new(
+        let mut descriptor_allocator = DescriptorAllocator::new(
             context.device_ref(),
-            vs,
-            fs,
-            swapchain.extent(),
-            &pipeline_layout,
-            &renderpass,
-            mesh::Vertex::binding_description(),
-            mesh::Vertex::attribute_descriptions(),
-            context.msaa_samples(),
-        )?;
-
-        let descriptor_pool = DescriptorPool::new(
-            context.device_ref(),
-            swapchain.image_count(),
-            swapchain.image_count(),
-            swapchain.image_count(),
-        )?;
+            vec![
+                (vk::DescriptorType::UNIFORM_BUFFER, 0.5),
+                (vk::DescriptorType::COMBINED_IMAGE_SAMPLER, 0.5),
+            ],
+            256,
+        );
 
         let image_available_semaphores = (0..FRAMES_IN_FLIGHT)
             .into_iter()
@@ -287,52 +261,6 @@ impl MasterRenderer {
             false,
         )?;
 
-        // Simple quad
-        let _vertices = [
-            mesh::Vertex::new(
-                Vec3::new(-0.5, -0.5, 0.0),
-                Vec3::unit_x(),
-                Vec2::new(1.0, 0.0),
-            ),
-            mesh::Vertex::new(
-                Vec3::new(0.5, -0.5, 0.0),
-                Vec3::unit_x(),
-                Vec2::new(0.0, 0.0),
-            ),
-            mesh::Vertex::new(
-                Vec3::new(0.5, 0.5, 0.0),
-                Vec3::unit_x(),
-                Vec2::new(0.0, 1.0),
-            ),
-            mesh::Vertex::new(
-                Vec3::new(-0.5, 0.5, 0.0),
-                Vec3::unit_x(),
-                Vec2::new(1.0, 1.0),
-            ),
-            mesh::Vertex::new(
-                Vec3::new(-0.5, -0.5, -0.2),
-                Vec3::unit_x(),
-                Vec2::new(1.0, 0.0),
-            ),
-            mesh::Vertex::new(
-                Vec3::new(0.5, -0.5, -0.2),
-                Vec3::unit_x(),
-                Vec2::new(0.0, 0.0),
-            ),
-            mesh::Vertex::new(
-                Vec3::new(0.5, 0.5, -0.2),
-                Vec3::unit_x(),
-                Vec2::new(0.0, 1.0),
-            ),
-            mesh::Vertex::new(
-                Vec3::new(-0.5, 0.5, -0.2),
-                Vec3::unit_x(),
-                Vec2::new(1.0, 1.0),
-            ),
-        ];
-
-        let _indices: [u32; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
-
         let (document, buffers, _images) = gltf::import("./data/models/monkey.gltf")?;
 
         // let mesh = Mesh::new(context.clone(), &vertices, &indices)?;
@@ -351,6 +279,41 @@ impl MasterRenderer {
 
         let sampler = Sampler::new(context.clone(), sampler_info)?;
 
+        let per_frame_data = swapchain
+            .images()
+            .iter()
+            .map(|swapchain_image| {
+                PerFrameData::new(
+                    context.clone(),
+                    &renderpass,
+                    &color_attachment,
+                    &depth_attachment,
+                    swapchain_image,
+                    &mut descriptor_cache,
+                    &mut descriptor_allocator,
+                    &texture,
+                    &sampler,
+                    &commandpool,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let set_layout = per_frame_data[0].set_layout;
+
+        let pipeline_layout = PipelineLayout::new(context.device_ref(), &[set_layout])?;
+
+        let pipeline = Pipeline::new(
+            context.device_ref(),
+            vs,
+            fs,
+            swapchain.extent(),
+            &pipeline_layout,
+            &renderpass,
+            mesh::Vertex::binding_description(),
+            mesh::Vertex::attribute_descriptions(),
+            context.msaa_samples(),
+        )?;
+
         let mut master_renderer = MasterRenderer {
             context,
             swapchain_loader,
@@ -367,16 +330,14 @@ impl MasterRenderer {
             texture,
             sampler,
             mesh,
+            descriptor_cache,
             color_attachment,
             depth_attachment,
-            set_layout,
-            descriptor_pool,
-            per_frame_data: Vec::new(),
+            descriptor_allocator,
+            per_frame_data,
         };
 
-        master_renderer.per_frame_data = (0..master_renderer.swapchain.image_count())
-            .map(|i| PerFrameData::new(&master_renderer, i as usize))
-            .collect::<Result<Vec<_>, _>>()?;
+        master_renderer.record()?;
 
         Ok(master_renderer)
     }
@@ -385,6 +346,24 @@ impl MasterRenderer {
     // Does not recreate the renderer immediately but waits for next frame
     pub fn on_resize(&mut self) {
         self.should_resize = true;
+    }
+
+    fn record(&mut self) -> Result<(), vulkan::Error> {
+        self.commandpool.reset(false)?;
+        self.per_frame_data
+            .iter()
+            .map(|frame| {
+                frame.record(
+                    &self.pipeline,
+                    &self.pipeline_layout,
+                    &self.renderpass,
+                    &self.mesh,
+                    self.swapchain.extent().width,
+                    self.swapchain.extent().height,
+                )
+            })
+            .collect::<Result<(), _>>()?;
+        Ok(())
     }
 
     // Does the resizing
@@ -403,55 +382,38 @@ impl MasterRenderer {
             window,
         )?;
 
+        self.color_attachment = Texture::new(
+            self.context.clone(),
+            TextureInfo {
+                width: self.swapchain.extent().width,
+                height: self.swapchain.extent().height,
+                mip_levels: 1,
+                usage: TextureUsage::ColorAttachment,
+                format: self.swapchain.image_format(),
+                samples: self.context.msaa_samples(),
+            },
+        )?;
+
+        self.depth_attachment = Texture::new(
+            self.context.clone(),
+            TextureInfo {
+                width: self.swapchain.extent().width,
+                height: self.swapchain.extent().height,
+                mip_levels: 1,
+                usage: TextureUsage::DepthAttachment,
+                format: Format::D32_SFLOAT,
+                samples: self.context.msaa_samples(),
+            },
+        )?;
+
         // Renderpass depends on swapchain surface format
         if old_surface_format != self.swapchain.surface_format() {
             info!("Surface format changed");
-            self.renderpass = RenderPass::new(
+            self.renderpass = create_renderpass(
                 self.context.device_ref(),
-                &RenderPassInfo {
-                    attachments: &[
-                        // Color attachment
-                        AttachmentInfo::from_texture(
-                            &self.color_attachment,
-                            LoadOp::CLEAR,
-                            StoreOp::STORE,
-                            ImageLayout::UNDEFINED,
-                            ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        ),
-                        // Depth attachment
-                        AttachmentInfo::from_texture(
-                            &self.depth_attachment,
-                            LoadOp::CLEAR,
-                            StoreOp::DONT_CARE,
-                            ImageLayout::UNDEFINED,
-                            ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                        ),
-                        // Resolve attachment
-                        AttachmentInfo {
-                            usage: vulkan::TextureUsage::ColorAttachment,
-                            format: self.swapchain.surface_format().format,
-                            samples: vk::SampleCountFlags::TYPE_1,
-                            store: StoreOp::STORE,
-                            load: LoadOp::DONT_CARE,
-                            initial_layout: ImageLayout::UNDEFINED,
-                            final_layout: ImageLayout::PRESENT_SRC_KHR,
-                        },
-                    ],
-                    subpasses: &[SubpassInfo {
-                        color_attachments: &[AttachmentReference {
-                            attachment: 0,
-                            layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        }],
-                        resolve_attachments: &[AttachmentReference {
-                            attachment: 2,
-                            layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        }],
-                        depth_attachment: Some(AttachmentReference {
-                            attachment: 1,
-                            layout: ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                        }),
-                    }],
-                },
+                &self.color_attachment,
+                &self.depth_attachment,
+                self.swapchain.image_format(),
             )?;
         }
 
@@ -472,12 +434,28 @@ impl MasterRenderer {
 
         self.commandpool.reset(false)?;
 
-        self.descriptor_pool.reset()?;
+        self.descriptor_allocator.reset()?;
 
         log::debug!("Recreating per frame data");
-        self.per_frame_data = (0..self.swapchain.image_count())
-            .map(|i| PerFrameData::new(&self, i as usize))
-            .collect::<Result<Vec<_>, _>>()?;
+        self.per_frame_data.clear();
+        for swapchain_image in self.swapchain.images() {
+            let frame = PerFrameData::new(
+                self.context.clone(),
+                &self.renderpass,
+                &self.color_attachment,
+                &self.depth_attachment,
+                swapchain_image,
+                &mut self.descriptor_cache,
+                &mut self.descriptor_allocator,
+                &self.texture,
+                &self.sampler,
+                &self.commandpool,
+            )?;
+
+            self.per_frame_data.push(frame);
+        }
+
+        self.record()?;
 
         Ok(())
     }
@@ -572,8 +550,6 @@ impl Drop for MasterRenderer {
         info!("Destroying master renderer");
         device::wait_idle(self.context.device()).unwrap();
 
-        descriptors::destroy_layout(self.context.device(), self.set_layout);
-
         self.image_available_semaphores
             .iter()
             .for_each(|s| semaphore::destroy(&self.context.device(), *s));
@@ -586,4 +562,59 @@ impl Drop for MasterRenderer {
             .iter()
             .for_each(|f| fence::destroy(&self.context.device(), *f));
     }
+}
+
+fn create_renderpass(
+    device: Rc<ash::Device>,
+    color_attachment: &Texture,
+    depth_attachment: &Texture,
+    swapchain_format: vk::Format,
+) -> Result<RenderPass, vulkan::Error> {
+    let renderpass_info = RenderPassInfo {
+        attachments: &[
+            // Color attachment
+            AttachmentInfo::from_texture(
+                color_attachment,
+                LoadOp::CLEAR,
+                StoreOp::STORE,
+                ImageLayout::UNDEFINED,
+                ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            ),
+            // Depth attachment
+            AttachmentInfo::from_texture(
+                depth_attachment,
+                LoadOp::CLEAR,
+                StoreOp::DONT_CARE,
+                ImageLayout::UNDEFINED,
+                ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            ),
+            // Present attachment
+            AttachmentInfo {
+                usage: vulkan::TextureUsage::ColorAttachment,
+                format: swapchain_format,
+                samples: vk::SampleCountFlags::TYPE_1,
+                load: LoadOp::DONT_CARE,
+                store: StoreOp::STORE,
+                initial_layout: ImageLayout::UNDEFINED,
+                final_layout: ImageLayout::PRESENT_SRC_KHR,
+            },
+        ],
+        subpasses: &[SubpassInfo {
+            color_attachments: &[AttachmentReference {
+                attachment: 0,
+                layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            }],
+            resolve_attachments: &[AttachmentReference {
+                attachment: 2,
+                layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            }],
+            depth_attachment: Some(AttachmentReference {
+                attachment: 1,
+                layout: ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            }),
+        }],
+    };
+
+    let renderpass = RenderPass::new(device, &renderpass_info)?;
+    Ok(renderpass)
 }

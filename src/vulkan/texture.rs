@@ -269,6 +269,16 @@ impl Texture {
     pub fn usage(&self) -> TextureUsage {
         self.usage
     }
+
+    /// Get the texture's width.
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    /// Get the texture's height.
+    pub fn height(&self) -> u32 {
+        self.height
+    }
 }
 
 impl AsRef<vk::ImageView> for Texture {

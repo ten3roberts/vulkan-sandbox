@@ -20,7 +20,8 @@ impl Framebuffer {
         device: Rc<Device>,
         renderpass: &RenderPass,
         attachments: &[T],
-        extent: vk::Extent2D,
+        width: u32,
+        height: u32,
     ) -> Result<Self, Error> {
         let attachment_views = attachments
             .iter()
@@ -30,8 +31,8 @@ impl Framebuffer {
         let create_info = vk::FramebufferCreateInfo::builder()
             .render_pass(renderpass.renderpass())
             .attachments(&attachment_views)
-            .width(extent.width)
-            .height(extent.height)
+            .width(width)
+            .height(height)
             .layers(1);
 
         let framebuffer = unsafe { device.create_framebuffer(&create_info, None)? };
