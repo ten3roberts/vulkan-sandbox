@@ -3,13 +3,13 @@ use ash::vk::{self, ShaderStageFlags};
 use log::info;
 use ultraviolet::mat::*;
 use ultraviolet::vec::*;
-use vulkan_sandbox::vulkan::fence;
 use vulkan_sandbox::vulkan::pipeline::*;
 use vulkan_sandbox::vulkan::renderpass::*;
 use vulkan_sandbox::vulkan::sampler;
 use vulkan_sandbox::vulkan::sampler::*;
 use vulkan_sandbox::vulkan::texture::*;
 use vulkan_sandbox::vulkan::VulkanContext;
+use vulkan_sandbox::vulkan::{fence, Extent};
 use vulkan_sandbox::{
     mesh,
     vulkan::{device, semaphore},
@@ -68,8 +68,7 @@ impl PerFrameData {
             context.device_ref(),
             &renderpass,
             &[color_attachment, depth_attachment, swapchain_image],
-            swapchain_image.width(),
-            swapchain_image.height(),
+            swapchain_image.extent(),
         )?;
 
         let uniformbuffer = Buffer::new(
@@ -109,8 +108,7 @@ impl PerFrameData {
         pipeline_layout: &PipelineLayout,
         renderpass: &RenderPass,
         mesh: &Mesh,
-        width: u32,
-        height: u32,
+        extent: Extent,
     ) -> Result<(), vulkan::Error> {
         let commandbuffer = &self.commandbuffer;
 
@@ -119,8 +117,7 @@ impl PerFrameData {
         commandbuffer.begin_renderpass(
             &renderpass,
             &self.framebuffer,
-            width,
-            height,
+            extent,
             // TODO Autogenerate clear color based on one value
             &[
                 vk::ClearValue {
@@ -197,8 +194,7 @@ impl MasterRenderer {
         let color_attachment = Texture::new(
             context.clone(),
             TextureInfo {
-                width: swapchain.extent().width,
-                height: swapchain.extent().height,
+                extent: swapchain.extent(),
                 mip_levels: 1,
                 usage: TextureUsage::ColorAttachment,
                 format: swapchain.image_format(),
@@ -209,8 +205,7 @@ impl MasterRenderer {
         let depth_attachment = Texture::new(
             context.clone(),
             TextureInfo {
-                width: swapchain.extent().width,
-                height: swapchain.extent().height,
+                extent: swapchain.extent(),
                 mip_levels: 1,
                 usage: TextureUsage::DepthAttachment,
                 format: Format::D32_SFLOAT,
@@ -358,8 +353,7 @@ impl MasterRenderer {
                     &self.pipeline_layout,
                     &self.renderpass,
                     &self.mesh,
-                    self.swapchain.extent().width,
-                    self.swapchain.extent().height,
+                    self.swapchain.extent(),
                 )
             })
             .collect::<Result<(), _>>()?;
@@ -385,8 +379,7 @@ impl MasterRenderer {
         self.color_attachment = Texture::new(
             self.context.clone(),
             TextureInfo {
-                width: self.swapchain.extent().width,
-                height: self.swapchain.extent().height,
+                extent: self.swapchain.extent(),
                 mip_levels: 1,
                 usage: TextureUsage::ColorAttachment,
                 format: self.swapchain.image_format(),
@@ -397,8 +390,7 @@ impl MasterRenderer {
         self.depth_attachment = Texture::new(
             self.context.clone(),
             TextureInfo {
-                width: self.swapchain.extent().width,
-                height: self.swapchain.extent().height,
+                extent: self.swapchain.extent(),
                 mip_levels: 1,
                 usage: TextureUsage::DepthAttachment,
                 format: Format::D32_SFLOAT,

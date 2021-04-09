@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use super::framebuffer::Framebuffer;
 use super::pipeline::Pipeline;
 use super::pipeline::PipelineLayout;
 use super::renderpass::RenderPass;
@@ -9,6 +8,7 @@ use super::{
     buffer::{Buffer, BufferType},
     device,
 };
+use super::{framebuffer::Framebuffer, Extent};
 use arrayvec::ArrayVec;
 use ash::version::DeviceV1_0;
 use ash::vk;
@@ -169,8 +169,7 @@ impl CommandBuffer {
         &self,
         renderpass: &RenderPass,
         framebuffer: &Framebuffer,
-        width: u32,
-        height: u32,
+        extent: Extent,
         clear_values: &[vk::ClearValue],
     ) {
         let begin_info = vk::RenderPassBeginInfo {
@@ -180,7 +179,7 @@ impl CommandBuffer {
             framebuffer: framebuffer.framebuffer(),
             render_area: vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D { width, height },
+                extent: extent.into(),
             },
             clear_value_count: clear_values.len() as _,
             p_clear_values: clear_values.as_ptr(),

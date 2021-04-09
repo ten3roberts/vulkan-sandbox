@@ -3,7 +3,7 @@ use std::{path::Path, rc::Rc};
 use ash::version::DeviceV1_0;
 use ash::vk;
 
-use super::{buffer, commands::*, context::VulkanContext, Error};
+use super::{buffer, commands::*, context::VulkanContext, extent::Extent, Error};
 
 pub use vk::Format;
 pub use vk::SampleCountFlags;
@@ -11,8 +11,7 @@ pub use vk::SampleCountFlags;
 /// Specifies texture creation info.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextureInfo {
-    pub width: u32,
-    pub height: u32,
+    pub extent: Extent,
     /// The maximum amount of mip levels to use.
     /// Actual value may be lower due to texture size.
     /// A value of zero uses the maximum mip levels.
@@ -27,8 +26,7 @@ pub struct TextureInfo {
 impl Default for TextureInfo {
     fn default() -> Self {
         Self {
-            width: 512,
-            height: 512,
+            extent: (512, 512).into(),
             mip_levels: 1,
             usage: TextureUsage::Sampled,
             format: Format::R8G8B8A8_SRGB,
@@ -57,8 +55,7 @@ pub struct Texture {
     format: vk::Format,
     // May not necessarily own the allocation
     allocation: Option<vk_mem::Allocation>,
-    width: u32,
-    height: u32,
+    extent: Extent,
     mip_levels: u32,
     samples: vk::SampleCountFlags,
     usage: TextureUsage,
@@ -75,8 +72,7 @@ impl Texture {
         let texture = Self::new(
             context,
             TextureInfo {
-                width: image.width(),
-                height: image.height(),
+                extent: (image.width(), image.height()).into(),
                 mip_levels: 0,
                 ..Default::default()
             },
@@ -92,7 +88,7 @@ impl Texture {
     pub fn new(context: Rc<VulkanContext>, info: TextureInfo) -> Result<Self, Error> {
         // Re-alias as mutable
         let mut info = info;
-        let mut mip_levels = calculate_mip_levels(info.width, info.height);
+        let mut mip_levels = calculate_mip_levels(info.extent);
 
         // Multisampled images cannot use more than one miplevel
         if info.samples != vk::SampleCountFlags::TYPE_1 {
@@ -127,8 +123,8 @@ impl Texture {
         let image_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
-                width: info.width,
-                height: info.height,
+                width: info.extent.width,
+                height: info.extent.height,
                 depth: 1,
             })
             .mip_levels(mip_levels)
@@ -185,8 +181,7 @@ impl Texture {
             context,
             image,
             image_view,
-            width: info.width,
-            height: info.height,
+            extent: info.extent,
             mip_levels: info.mip_levels,
             format: info.format,
             samples: info.samples,
@@ -225,8 +220,7 @@ impl Texture {
             staging_buffer,
             self.image,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            self.width,
-            self.height,
+            self.extent,
         )?;
 
         // Generate Mipmaps
@@ -234,8 +228,7 @@ impl Texture {
             transfer_pool,
             graphics_queue,
             self.image,
-            self.width,
-            self.height,
+            self.extent,
             self.mip_levels,
         )?;
 
@@ -260,24 +253,19 @@ impl Texture {
         self.mip_levels
     }
 
-    /// Get a reference to the texture's samples.
+    /// Return a reference to the texture's samples.
     pub fn samples(&self) -> vk::SampleCountFlags {
         self.samples
     }
 
-    /// Get a reference to the texture's type
+    /// Return a reference to the texture's type
     pub fn usage(&self) -> TextureUsage {
         self.usage
     }
 
-    /// Get the texture's width.
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    /// Get the texture's height.
-    pub fn height(&self) -> u32 {
-        self.height
+    // Returns the textures width and height
+    pub fn extent(&self) -> Extent {
+        self.extent
     }
 }
 
@@ -323,16 +311,15 @@ impl Drop for Texture {
     }
 }
 
-fn calculate_mip_levels(width: u32, height: u32) -> u32 {
-    (width.max(height) as f32).log2().floor() as u32 + 1
+fn calculate_mip_levels(extent: Extent) -> u32 {
+    (extent.width.max(extent.height) as f32).log2().floor() as u32 + 1
 }
 
 fn generate_mipmaps(
     commandpool: &CommandPool,
     queue: vk::Queue,
     image: vk::Image,
-    width: u32,
-    height: u32,
+    extent: Extent,
     mip_levels: u32,
 ) -> Result<(), Error> {
     let mut barrier = vk::ImageMemoryBarrier {
@@ -351,8 +338,8 @@ fn generate_mipmaps(
         ..Default::default()
     };
 
-    let mut mip_width = width;
-    let mut mip_height = height;
+    let mut mip_width = extent.width;
+    let mut mip_height = extent.height;
 
     commandpool.single_time_command(queue, |commandbuffer| {
         for i in 1..mip_levels {

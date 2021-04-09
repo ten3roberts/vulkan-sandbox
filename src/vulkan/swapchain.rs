@@ -5,7 +5,7 @@ use ash::Device;
 use ash::Instance;
 use std::{cmp, rc::Rc};
 
-use super::{Error, Texture, TextureInfo, VulkanContext};
+use super::{Error, Extent, Texture, TextureInfo, VulkanContext};
 
 #[derive(Debug)]
 pub struct SwapchainSupport {
@@ -67,10 +67,10 @@ fn pick_present_mode(
     return vk::PresentModeKHR::FIFO;
 }
 
-fn pick_extent(window: &glfw::Window, capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
+fn pick_extent(window: &glfw::Window, capabilities: &vk::SurfaceCapabilitiesKHR) -> Extent {
     // The extent of the surface needs to match exactly
     if capabilities.current_extent.width != std::u32::MAX {
-        return capabilities.current_extent;
+        return capabilities.current_extent.into();
     }
 
     // Freely choose extent based on window and min-max capabilities
@@ -86,7 +86,7 @@ fn pick_extent(window: &glfw::Window, capabilities: &vk::SurfaceCapabilitiesKHR)
         cmp::min(capabilities.max_image_extent.height, height as u32),
     );
 
-    vk::Extent2D { width, height }
+    (width, height).into()
 }
 
 pub fn create_loader(instance: &Instance, device: &Device) -> SwapchainLoader {
@@ -99,7 +99,7 @@ pub struct Swapchain {
     swapchain_loader: Rc<SwapchainLoader>,
     swapchain_khr: vk::SwapchainKHR,
     images: Vec<Texture>,
-    extent: vk::Extent2D,
+    extent: Extent,
     surface_format: vk::SurfaceFormatKHR,
 }
 
@@ -149,7 +149,7 @@ impl Swapchain {
             .min_image_count(image_count)
             .image_format(surface_format.format)
             .image_color_space(surface_format.color_space)
-            .image_extent(extent)
+            .image_extent(extent.into())
             .image_array_layers(1)
             // For now, render directly to the images
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
@@ -166,8 +166,7 @@ impl Swapchain {
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain_khr)? };
 
         let image_info = TextureInfo {
-            width: extent.width,
-            height: extent.height,
+            extent,
             mip_levels: 1,
             usage: super::TextureUsage::ColorAttachment,
             format: surface_format.format,
@@ -235,7 +234,7 @@ impl Swapchain {
         self.surface_format
     }
 
-    pub fn extent(&self) -> vk::Extent2D {
+    pub fn extent(&self) -> Extent {
         self.extent
     }
 

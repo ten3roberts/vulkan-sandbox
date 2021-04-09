@@ -1,5 +1,5 @@
-use super::renderpass::*;
 use super::Error;
+use super::{renderpass::*, Extent};
 use ash::version::DeviceV1_0;
 use ash::Device;
 use std::io::{Read, Seek};
@@ -17,7 +17,7 @@ impl Pipeline {
         device: Rc<Device>,
         mut vertexshader: R,
         mut fragmentshader: R,
-        extent: vk::Extent2D,
+        extent: Extent,
         layout: &PipelineLayout,
         renderpass: &RenderPass,
         vertex_binding: vk::VertexInputBindingDescription,
@@ -71,7 +71,7 @@ impl Pipeline {
 
         let scissors = [vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent,
+            extent: extent.into(),
         }];
 
         let viewport_state = vk::PipelineViewportStateCreateInfo::builder()

@@ -4,7 +4,7 @@ use std::{mem, rc::Rc};
 use ash::vk;
 use vk_mem::Allocator;
 
-use super::{commands::*, context::VulkanContext, Error};
+use super::{commands::*, context::VulkanContext, Error, Extent};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 // Defines the type of a buffer
@@ -374,8 +374,7 @@ pub fn copy_to_image(
     buffer: vk::Buffer,
     image: vk::Image,
     layout: vk::ImageLayout,
-    width: u32,
-    height: u32,
+    extent: Extent,
 ) -> Result<(), Error> {
     let region = vk::BufferImageCopy {
         buffer_offset: 0,
@@ -389,8 +388,8 @@ pub fn copy_to_image(
         },
         image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
         image_extent: vk::Extent3D {
-            width,
-            height,
+            width: extent.width,
+            height: extent.height,
             depth: 1,
         },
     };

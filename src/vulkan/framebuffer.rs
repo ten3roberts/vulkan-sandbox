@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{renderpass::MAX_ATTACHMENTS, Error, RenderPass};
+use super::{renderpass::MAX_ATTACHMENTS, Error, Extent, RenderPass};
 use arrayvec::ArrayVec;
 use ash::version::DeviceV1_0;
 use ash::vk;
@@ -13,6 +13,7 @@ use ash::Device;
 pub struct Framebuffer {
     device: Rc<Device>,
     framebuffer: vk::Framebuffer,
+    extent: Extent,
 }
 
 impl Framebuffer {
@@ -20,8 +21,7 @@ impl Framebuffer {
         device: Rc<Device>,
         renderpass: &RenderPass,
         attachments: &[T],
-        width: u32,
-        height: u32,
+        extent: Extent,
     ) -> Result<Self, Error> {
         let attachment_views = attachments
             .iter()
@@ -31,8 +31,8 @@ impl Framebuffer {
         let create_info = vk::FramebufferCreateInfo::builder()
             .render_pass(renderpass.renderpass())
             .attachments(&attachment_views)
-            .width(width)
-            .height(height)
+            .width(extent.width)
+            .height(extent.height)
             .layers(1);
 
         let framebuffer = unsafe { device.create_framebuffer(&create_info, None)? };
@@ -40,11 +40,16 @@ impl Framebuffer {
         Ok(Framebuffer {
             device,
             framebuffer,
+            extent,
         })
     }
 
     pub fn framebuffer(&self) -> vk::Framebuffer {
         self.framebuffer
+    }
+
+    pub fn extent(&self) -> Extent {
+        self.extent
     }
 }
 
