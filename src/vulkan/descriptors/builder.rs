@@ -18,7 +18,7 @@ pub struct DescriptorBuilder {
     // Holds a map to where in the writes array each binding is, or MAX_BINDINGS
     used_bindings: [usize; MAX_BINDINGS],
     // If nothing is changed, the last layout aquired from cache
-    cached_layout: vk::DescriptorSetLayout,
+    cached_layout: Option<(vk::DescriptorSetLayout, DescriptorLayoutInfo)>,
 }
 
 impl Default for DescriptorBuilder {
@@ -29,7 +29,7 @@ impl Default for DescriptorBuilder {
             buffer_infos: Default::default(),
             image_infos: Default::default(),
             used_bindings: [MAX_BINDINGS; MAX_BINDINGS],
-            cached_layout: vk::DescriptorSetLayout::null(),
+            cached_layout: None,
         }
     }
 }
@@ -41,7 +41,7 @@ impl DescriptorBuilder {
 
     fn add(&mut self, binding: DescriptorSetBinding, write: WriteDescriptorSet) {
         // Cached layout is no longer valid
-        self.cached_layout = vk::DescriptorSetLayout::null();
+        self.cached_layout = None;
 
         // Binding has not already been specified
         let binding_idx = &mut self.used_bindings[binding.binding as usize];
@@ -142,8 +142,10 @@ impl DescriptorBuilder {
 
         self.layout(cache, &mut layout)?;
 
+        let layout_info = &self.cached_layout.as_ref().unwrap().1;
+
         // Allocate the descriptor sets
-        *set = allocator.allocate(&[layout])?[0];
+        *set = allocator.allocate(layout, &layout_info, 1)?[0];
 
         self.writes
             .iter_mut()
@@ -154,18 +156,26 @@ impl DescriptorBuilder {
     }
 
     /// Returns the descriptor set layout by writing to `layout`. Uses the provided cache to fetch
-    /// or create the appropriate layout. Can be chained.
+    /// or create the appropriate layout.
     pub fn layout(
         &mut self,
         cache: &mut DescriptorLayoutCache,
         layout: &mut vk::DescriptorSetLayout,
     ) -> Result<&mut Self, Error> {
         // Create and store the layout if it isn't up to date
-        if self.cached_layout == vk::DescriptorSetLayout::null() {
-            self.cached_layout = cache.get(DescriptorLayoutInfo::new(&self.bindings))?;
+        if let Some(cached_layout) = self.cached_layout.as_ref() {
+            *layout = cached_layout.0;
+            Ok(self)
+        } else {
+            self.recache_layout(cache)?;
+            self.layout(cache, layout)
         }
+    }
 
-        *layout = self.cached_layout;
-        Ok(self)
+    fn recache_layout(&mut self, cache: &mut DescriptorLayoutCache) -> Result<(), Error> {
+        let mut info = DescriptorLayoutInfo::new(&self.bindings);
+        let cached_layout = cache.get(&mut info)?;
+        self.cached_layout = Some((cached_layout, info));
+        Ok(())
     }
 }

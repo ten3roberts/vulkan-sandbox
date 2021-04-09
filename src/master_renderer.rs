@@ -225,14 +225,7 @@ impl MasterRenderer {
 
         let mut descriptor_cache = DescriptorLayoutCache::new(context.device_ref());
 
-        let mut descriptor_allocator = DescriptorAllocator::new(
-            context.device_ref(),
-            vec![
-                (vk::DescriptorType::UNIFORM_BUFFER, 0.5),
-                (vk::DescriptorType::COMBINED_IMAGE_SAMPLER, 0.5),
-            ],
-            256,
-        );
+        let mut descriptor_allocator = DescriptorAllocator::new(context.device_ref(), 2);
 
         let image_available_semaphores = (0..FRAMES_IN_FLIGHT)
             .into_iter()

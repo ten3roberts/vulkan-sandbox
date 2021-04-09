@@ -20,6 +20,42 @@ pub struct DescriptorLayoutInfo {
     sorted: bool,
 }
 
+impl DescriptorLayoutInfo {
+    pub fn new(bindings: &[DescriptorSetBinding]) -> Self {
+        Self {
+            bindings: bindings.iter().copied().collect(),
+            sorted: false,
+        }
+    }
+
+    /// Return a reference to the descriptor layout info's bindings.
+    pub fn bindings(&self) -> &[DescriptorSetBinding] {
+        &self.bindings
+    }
+
+    pub fn add(&mut self, binding: DescriptorSetBinding) {
+        self.bindings.push(binding);
+    }
+
+    /// Ensures the bindings are sorted
+    fn ensure_sorted(&mut self) {
+        if self.sorted {
+            return;
+        }
+        self.bindings.sort_by_key(|binding| binding.binding);
+        self.sorted = true;
+    }
+}
+
+impl Default for DescriptorLayoutInfo {
+    fn default() -> Self {
+        Self {
+            bindings: ArrayVec::new(),
+            sorted: false,
+        }
+    }
+}
+
 impl Hash for DescriptorLayoutInfo {
     fn hash<H: Hasher>(&self, state: &mut H) {
         for binding in &self.bindings {
@@ -46,24 +82,6 @@ impl PartialEq for DescriptorLayoutInfo {
 
 impl Eq for DescriptorLayoutInfo {}
 
-impl DescriptorLayoutInfo {
-    pub fn new(bindings: &[DescriptorSetBinding]) -> Self {
-        Self {
-            bindings: bindings.iter().copied().collect(),
-            sorted: false,
-        }
-    }
-
-    /// Ensures the bindings are sorted
-    fn ensure_sorted(&mut self) {
-        if self.sorted {
-            return;
-        }
-        self.bindings.sort_by_key(|binding| binding.binding);
-        self.sorted = true;
-    }
-}
-
 pub struct DescriptorLayoutCache {
     device: Rc<Device>,
     layouts: HashMap<DescriptorLayoutInfo, DescriptorSetLayout>,
@@ -78,15 +96,15 @@ impl DescriptorLayoutCache {
     }
 
     /// Gets the descriptor set layout matching info. If layout does not already exist it is
-    /// created.
-    pub fn get(&mut self, mut info: DescriptorLayoutInfo) -> Result<DescriptorSetLayout, Error> {
+    /// created. Takes info as mutable since it needs to be sorted.
+    pub fn get(&mut self, info: &mut DescriptorLayoutInfo) -> Result<DescriptorSetLayout, Error> {
         info.ensure_sorted();
 
         if let Some(layout) = self.layouts.get(&info) {
             return Ok(*layout);
         } else {
+            let info = info.clone();
             // Create layout
-            log::debug!("Creating new descriptor set layout: {:#?}", &info);
             let layout = create(&self.device, &info)?;
             Ok(*self.layouts.entry(info).or_insert(layout))
         }
