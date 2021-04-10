@@ -146,6 +146,7 @@ impl Texture {
                 ..Default::default()
             },
         )?;
+
         Self::from_image(context, info, image, Some(allocation))
     }
 
@@ -457,14 +458,12 @@ fn transition_layout(
                 vk::PipelineStageFlags::TRANSFER,
             ),
 
-            (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => {
-                (
-                    vk::AccessFlags::TRANSFER_WRITE,
-                    vk::AccessFlags::SHADER_READ,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::FRAGMENT_SHADER,
-                )
-            }
+            (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
+                vk::AccessFlags::TRANSFER_WRITE,
+                vk::AccessFlags::SHADER_READ,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+            ),
             _ => return Err(Error::UnsupportedLayoutTransition(old_layout, new_layout)),
         };
 

@@ -7,6 +7,10 @@ use std::{cmp, rc::Rc};
 
 use super::{Error, Extent, Texture, TextureInfo, VulkanContext};
 
+/// The maximum number of images in the swapchain. Actual image count may be less but never more.
+/// This is to allow inline allocation of per swapchain image resources through `ArrayVec`.
+pub const MAX_FRAMES: usize = 5;
+
 #[derive(Debug)]
 pub struct SwapchainSupport {
     pub capabilities: vk::SurfaceCapabilitiesKHR,
@@ -116,7 +120,7 @@ impl Swapchain {
         )?;
 
         // Use one more image than the minumum supported
-        let mut image_count = support.capabilities.min_image_count + 1;
+        let mut image_count = (support.capabilities.min_image_count + 1).min(MAX_FRAMES as u32);
 
         // Make sure max image count isn't exceeded
         if support.capabilities.max_image_count != 0 {
@@ -139,8 +143,7 @@ impl Swapchain {
 
         let surface_format = pick_format(&support.formats);
 
-        let present_mode =
-            pick_present_mode(&support.present_modes, vk::PresentModeKHR::IMMEDIATE);
+        let present_mode = pick_present_mode(&support.present_modes, vk::PresentModeKHR::IMMEDIATE);
 
         let extent = pick_extent(window, &support.capabilities);
 

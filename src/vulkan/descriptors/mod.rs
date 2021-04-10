@@ -12,6 +12,7 @@ mod layout;
 pub use allocator::*;
 pub use builder::*;
 pub use layout::*;
+pub use vk::DescriptorSet;
 
 /// Highest binding allowed for descriptor set. This is deliberately set low as the bindings should
 /// be kept as compact as possible.

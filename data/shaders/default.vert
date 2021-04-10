@@ -8,7 +8,7 @@ layout(location = 2) in vec2 texCoord;
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
 
-layout(binding = 0) uniform UniformBufferObject {
+layout(binding = 0, set = 1) uniform UniformBufferObject {
   mat4 mvp;
 } ubo;
 

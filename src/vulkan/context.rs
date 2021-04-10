@@ -80,7 +80,9 @@ impl VulkanContext {
             true,
         )?;
 
-        let msaa_samples = get_max_msaa_samples(limits.framebuffer_color_sample_counts);
+        let msaa_samples = get_max_msaa_samples(
+            limits.framebuffer_color_sample_counts & limits.sampled_image_color_sample_counts,
+        );
 
         Ok(VulkanContext {
             _entry: entry,

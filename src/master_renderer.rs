@@ -1,34 +1,27 @@
 use arrayvec::ArrayVec;
-use ash::vk::{self, ShaderStageFlags};
+use ash::vk;
 use log::info;
 use ultraviolet::mat::*;
 use ultraviolet::vec::*;
-use vulkan_sandbox::vulkan::pipeline::*;
-use vulkan_sandbox::vulkan::renderpass::*;
-use vulkan_sandbox::vulkan::sampler;
-use vulkan_sandbox::vulkan::sampler::*;
-use vulkan_sandbox::vulkan::texture::*;
-use vulkan_sandbox::vulkan::VulkanContext;
-use vulkan_sandbox::vulkan::{fence, Extent};
-use vulkan_sandbox::{
-    mesh,
-    vulkan::{device, semaphore},
-};
-use vulkan_sandbox::{mesh::Mesh, vulkan::RenderPass};
 
+use vulkan::context::*;
+use vulkan::renderpass::*;
+use vulkan::texture::*;
+use vulkan::{device, semaphore};
+use vulkan::{fence, Extent};
 use vulkan_sandbox::vulkan;
+use vulkan_sandbox::{material::*, mesh::Mesh, vulkan::RenderPass};
 
 use vulkan::swapchain;
-use vulkan::{Buffer, BufferType, BufferUsage, VertexDesc};
+use vulkan::{Buffer, BufferType, BufferUsage};
 
 use vulkan::commands::*;
-use vulkan::descriptors;
 use vulkan::descriptors::*;
 use vulkan::swapchain::*;
 use vulkan::Framebuffer;
 
 use glfw;
-use std::{error::Error, fs::File, rc::Rc};
+use std::{error::Error, rc::Rc};
 
 const FRAMES_IN_FLIGHT: usize = 2;
 
@@ -41,11 +34,11 @@ struct UniformBufferObject {
 /// Represents data needed to be duplicated for each swapchain image
 struct PerFrameData {
     uniformbuffer: Buffer,
-    set: vk::DescriptorSet,
     commandbuffer: CommandBuffer,
     framebuffer: Framebuffer,
     // The fence currently associated to this image_index
     image_in_flight: vk::Fence,
+    set: vk::DescriptorSet,
     set_layout: vk::DescriptorSetLayout,
 }
 
@@ -56,14 +49,10 @@ impl PerFrameData {
         color_attachment: &Texture,
         depth_attachment: &Texture,
         swapchain_image: &Texture,
-        descriptor_cache: &mut DescriptorLayoutCache,
+        descriptor_layout_cache: &mut DescriptorLayoutCache,
         descriptor_allocator: &mut DescriptorAllocator,
-        texture: &Texture,
-        sampler: &Sampler,
         commandpool: &CommandPool,
     ) -> Result<Self, vulkan::Error> {
-        let device = context.device();
-
         let framebuffer = Framebuffer::new(
             context.device_ref(),
             &renderpass,
@@ -83,31 +72,34 @@ impl PerFrameData {
         let mut set = Default::default();
         let mut set_layout = Default::default();
 
-        descriptors::DescriptorBuilder::new()
-            .bind_uniform_buffer(0, ShaderStageFlags::VERTEX, &uniformbuffer)
-            .bind_combined_image_sampler(1, ShaderStageFlags::FRAGMENT, &texture, &sampler)
-            .build(device, descriptor_cache, descriptor_allocator, &mut set)?
-            .layout(descriptor_cache, &mut set_layout)?;
+        DescriptorBuilder::new()
+            .bind_uniform_buffer(0, vk::ShaderStageFlags::VERTEX, &uniformbuffer)
+            .build(
+                context.device(),
+                descriptor_layout_cache,
+                descriptor_allocator,
+                &mut set,
+            )?
+            .layout(descriptor_layout_cache, &mut set_layout)?;
 
         // Create and record command buffers
         let commandbuffer = commandpool.allocate(1)?.pop().unwrap();
 
         Ok(PerFrameData {
             uniformbuffer,
-            set,
             framebuffer,
             commandbuffer,
             image_in_flight: vk::Fence::null(),
+            set,
             set_layout,
         })
     }
 
     fn record(
         &self,
-        pipeline: &Pipeline,
-        pipeline_layout: &PipelineLayout,
         renderpass: &RenderPass,
         mesh: &Mesh,
+        material: &Material,
         extent: Extent,
     ) -> Result<(), vulkan::Error> {
         let commandbuffer = &self.commandbuffer;
@@ -134,9 +126,15 @@ impl PerFrameData {
             ],
         );
 
-        commandbuffer.bind_pipeline(pipeline);
+        // Bind material
+        commandbuffer.bind_pipeline(material.pipeline());
+        commandbuffer.bind_descriptor_sets(
+            material.pipeline_layout(),
+            0,
+            &[material.set(), self.set],
+        );
+
         commandbuffer.bind_vertexbuffers(0, &[&mesh.vertex_buffer()]);
-        commandbuffer.bind_descriptor_sets(&pipeline_layout, 0, &[self.set]);
 
         commandbuffer.bind_indexbuffer(&mesh.index_buffer(), 0);
         commandbuffer.draw_indexed(mesh.index_count(), 1, 0, 0, 0);
@@ -149,9 +147,6 @@ impl PerFrameData {
 pub struct MasterRenderer {
     swapchain_loader: Rc<ash::extensions::khr::Swapchain>,
     swapchain: Swapchain,
-    // Framebuffers to the actual swapchain images
-    pipeline_layout: vulkan::PipelineLayout,
-    pipeline: Pipeline,
 
     in_flight_fences: ArrayVec<[vk::Fence; FRAMES_IN_FLIGHT]>,
     image_available_semaphores: ArrayVec<[vk::Semaphore; FRAMES_IN_FLIGHT]>,
@@ -161,11 +156,12 @@ pub struct MasterRenderer {
     renderpass: RenderPass,
 
     mesh: Mesh,
+    material: Material,
 
-    descriptor_cache: DescriptorLayoutCache,
+    descriptor_layout_cache: DescriptorLayoutCache,
     descriptor_allocator: DescriptorAllocator,
 
-    per_frame_data: Vec<PerFrameData>,
+    per_frame_data: ArrayVec<[PerFrameData; MAX_FRAMES]>,
 
     // The current frame-in-flight index
     current_frame: usize,
@@ -174,9 +170,6 @@ pub struct MasterRenderer {
     // Multisampled color and depth renderpass attachments
     color_attachment: Texture,
     depth_attachment: Texture,
-
-    texture: Texture,
-    sampler: Sampler,
 
     // Drop context last
     context: Rc<VulkanContext>,
@@ -190,6 +183,8 @@ impl MasterRenderer {
         ));
 
         let swapchain = Swapchain::new(context.clone(), Rc::clone(&swapchain_loader), &window)?;
+        log::debug!("Created swapchain");
+        log::debug!("Swapchain image format: {:?}", swapchain.image_format());
 
         let color_attachment = Texture::new(
             context.clone(),
@@ -213,6 +208,8 @@ impl MasterRenderer {
             },
         )?;
 
+        log::debug!("Created attachments");
+
         let renderpass = create_renderpass(
             context.device_ref(),
             &color_attachment,
@@ -220,10 +217,7 @@ impl MasterRenderer {
             swapchain.image_format(),
         )?;
 
-        let vs = File::open("./data/shaders/default.vert.spv")?;
-        let fs = File::open("./data/shaders/default.frag.spv")?;
-
-        let mut descriptor_cache = DescriptorLayoutCache::new(context.device_ref());
+        let mut descriptor_layout_cache = DescriptorLayoutCache::new(context.device_ref());
 
         let mut descriptor_allocator = DescriptorAllocator::new(context.device_ref(), 2);
 
@@ -254,19 +248,6 @@ impl MasterRenderer {
         // let mesh = Mesh::new(context.clone(), &vertices, &indices)?;
         let mesh = Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)?;
 
-        let texture = Texture::load(context.clone(), "./data/textures/uv.png")?;
-
-        let sampler_info = SamplerInfo {
-            address_mode: sampler::AddressMode::REPEAT,
-            mag_filter: sampler::FilterMode::LINEAR,
-            min_filter: sampler::FilterMode::LINEAR,
-            unnormalized_coordinates: false,
-            anisotropy: 16.0,
-            mip_levels: texture.mip_levels(),
-        };
-
-        let sampler = Sampler::new(context.clone(), sampler_info)?;
-
         let per_frame_data = swapchain
             .images()
             .iter()
@@ -277,37 +258,35 @@ impl MasterRenderer {
                     &color_attachment,
                     &depth_attachment,
                     swapchain_image,
-                    &mut descriptor_cache,
+                    &mut descriptor_layout_cache,
                     &mut descriptor_allocator,
-                    &texture,
-                    &sampler,
                     &commandpool,
                 )
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<ArrayVec<[PerFrameData; MAX_FRAMES]>, _>>()?;
 
-        let set_layout = per_frame_data[0].set_layout;
+        let material_info = MaterialInfo {
+            vertexshader: "data/shaders/default.vert.spv".into(),
+            fragmentshader: "data/shaders/default.frag.spv".into(),
+            albedo: "data/textures/uv.png".into(),
+        };
 
-        let pipeline_layout = PipelineLayout::new(context.device_ref(), &[set_layout])?;
-
-        let pipeline = Pipeline::new(
-            context.device_ref(),
-            vs,
-            fs,
+        let material = Material::new(
+            context.clone(),
+            &mut descriptor_layout_cache,
+            &mut descriptor_allocator,
+            material_info,
             swapchain.extent(),
-            &pipeline_layout,
             &renderpass,
-            mesh::Vertex::binding_description(),
-            mesh::Vertex::attribute_descriptions(),
-            context.msaa_samples(),
+            per_frame_data[0].set_layout,
         )?;
 
         let mut master_renderer = MasterRenderer {
             context,
             swapchain_loader,
             swapchain,
-            pipeline_layout,
-            pipeline,
+            mesh,
+            material,
             in_flight_fences,
             image_available_semaphores,
             render_finished_semaphores,
@@ -315,10 +294,7 @@ impl MasterRenderer {
             renderpass,
             current_frame: 0,
             should_resize: false,
-            texture,
-            sampler,
-            mesh,
-            descriptor_cache,
+            descriptor_layout_cache,
             color_attachment,
             depth_attachment,
             descriptor_allocator,
@@ -342,10 +318,9 @@ impl MasterRenderer {
             .iter()
             .map(|frame| {
                 frame.record(
-                    &self.pipeline,
-                    &self.pipeline_layout,
                     &self.renderpass,
                     &self.mesh,
+                    &self.material,
                     self.swapchain.extent(),
                 )
             })
@@ -402,21 +377,6 @@ impl MasterRenderer {
             )?;
         }
 
-        let vs = File::open("./data/shaders/default.vert.spv")?;
-        let fs = File::open("./data/shaders/default.frag.spv")?;
-
-        self.pipeline = Pipeline::new(
-            self.context.device_ref(),
-            vs,
-            fs,
-            self.swapchain.extent(),
-            &self.pipeline_layout,
-            &self.renderpass,
-            mesh::Vertex::binding_description(),
-            mesh::Vertex::attribute_descriptions(),
-            self.context.msaa_samples(),
-        )?;
-
         self.commandpool.reset(false)?;
 
         self.descriptor_allocator.reset()?;
@@ -430,10 +390,8 @@ impl MasterRenderer {
                 &self.color_attachment,
                 &self.depth_attachment,
                 swapchain_image,
-                &mut self.descriptor_cache,
+                &mut self.descriptor_layout_cache,
                 &mut self.descriptor_allocator,
-                &self.texture,
-                &self.sampler,
                 &self.commandpool,
             )?;
 
