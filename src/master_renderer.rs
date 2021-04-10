@@ -21,19 +21,20 @@ use vulkan::swapchain::*;
 use vulkan::Framebuffer;
 
 use glfw;
-use std::{error::Error, rc::Rc};
+use std::{error::Error, mem, rc::Rc};
 
 const FRAMES_IN_FLIGHT: usize = 2;
+const MAX_OBJECTS: usize = 1024;
 
 #[derive(Default)]
 #[repr(C)]
-struct UniformBufferObject {
+struct ObjectData {
     mvp: Mat4,
 }
 
 /// Represents data needed to be duplicated for each swapchain image
 struct PerFrameData {
-    uniformbuffer: Buffer,
+    object_buffer: Buffer,
     commandbuffer: CommandBuffer,
     framebuffer: Framebuffer,
     // The fence currently associated to this image_index
@@ -60,20 +61,18 @@ impl PerFrameData {
             swapchain_image.extent(),
         )?;
 
-        let uniformbuffer = Buffer::new(
+        let object_buffer = Buffer::new_uninit(
             context.clone(),
-            BufferType::Uniform,
+            BufferType::Storage,
             BufferUsage::MappedPersistent,
-            &[UniformBufferObject {
-                mvp: Mat4::from_translation(Vec3::new(0.0, 0.4, 0.0)),
-            }],
+            (mem::size_of::<ObjectData>() * MAX_OBJECTS) as u64,
         )?;
 
         let mut set = Default::default();
         let mut set_layout = Default::default();
 
         DescriptorBuilder::new()
-            .bind_uniform_buffer(0, vk::ShaderStageFlags::VERTEX, &uniformbuffer)
+            .bind_storage_buffer(0, vk::ShaderStageFlags::VERTEX, &object_buffer)
             .build(
                 context.device(),
                 descriptor_layout_cache,
@@ -86,7 +85,7 @@ impl PerFrameData {
         let commandbuffer = commandpool.allocate(1)?.pop().unwrap();
 
         Ok(PerFrameData {
-            uniformbuffer,
+            object_buffer,
             framebuffer,
             commandbuffer,
             image_in_flight: vk::Fence::null(),
@@ -138,6 +137,7 @@ impl PerFrameData {
 
         commandbuffer.bind_indexbuffer(&mesh.index_buffer(), 0);
         commandbuffer.draw_indexed(mesh.index_count(), 1, 0, 0, 0);
+        commandbuffer.draw_indexed(mesh.index_count(), 1, 0, 0, 1);
         commandbuffer.end_renderpass();
         commandbuffer.end()?;
         Ok(())
@@ -450,13 +450,19 @@ impl MasterRenderer {
         // Reset fence before
         fence::reset(device, &[self.in_flight_fences[self.current_frame]])?;
 
-        data.uniformbuffer.fill(
+        data.object_buffer.fill(
             0,
-            &[UniformBufferObject {
-                mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.5))
-                    * Mat4::from_rotation_y(elapsed)
-                    * Mat4::from_scale(0.25),
-            }],
+            &[
+                ObjectData {
+                    mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.5))
+                        * Mat4::from_rotation_y(elapsed)
+                        * Mat4::from_scale(0.25),
+                },
+                ObjectData {
+                    mvp: Mat4::from_translation(Vec3::new(0.4, 0.0, (elapsed * 2.0).cos() + 0.5))
+                        * Mat4::from_scale(0.15),
+                },
+            ],
         )?;
 
         // Submit command buffers

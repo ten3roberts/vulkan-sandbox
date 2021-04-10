@@ -78,7 +78,7 @@ impl QueueFamilies {
 
 type Score = usize;
 
-const DEVICE_EXTENSIONS: &[&str] = &["VK_KHR_swapchain"];
+const DEVICE_EXTENSIONS: &[&str] = &["VK_KHR_swapchain", "VK_KHR_shader_draw_parameters"];
 
 /// Represents a physical device along with the queried properties, features, and queue families
 pub struct PhysicalDeviceInfo {

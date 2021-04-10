@@ -2,6 +2,7 @@
 use std::{mem, rc::Rc};
 
 use ash::vk;
+use vk::DeviceSize;
 use vk_mem::Allocator;
 
 use super::{commands::*, context::VulkanContext, Error, Extent};
@@ -17,7 +18,8 @@ pub enum BufferType {
     Index32,
     /// Uniform buffer
     Uniform,
-    // Instance,
+    /// Storage buffer
+    Storage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +51,7 @@ pub struct Buffer {
     allocation_info: vk_mem::AllocationInfo,
 
     // Maximum allocated size of the buffer
-    size: vk::DeviceSize,
+    size: DeviceSize,
     ty: BufferType,
     usage: BufferUsage,
 
@@ -58,21 +60,19 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    /// Creates a new buffer and fills it with vertex data using staging
-    /// buffer
-    pub fn new<T>(
+    /// Creates a new buffer with size and uninitialized contents.
+    pub fn new_uninit(
         context: Rc<VulkanContext>,
         ty: BufferType,
         usage: BufferUsage,
-        data: &[T],
+        size: DeviceSize,
     ) -> Result<Self, Error> {
-        let size = (mem::size_of::<T>() * data.len()) as vk::DeviceSize;
-
         // Calculate the buffer usage flags
         let vk_usage = match ty {
             BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
-            BufferType::Uniform => vk::BufferUsageFlags::UNIFORM_BUFFER,
             BufferType::Index16 | BufferType::Index32 => vk::BufferUsageFlags::INDEX_BUFFER,
+            BufferType::Uniform => vk::BufferUsageFlags::UNIFORM_BUFFER,
+            BufferType::Storage => vk::BufferUsageFlags::STORAGE_BUFFER,
         } | match usage {
             BufferUsage::Mapped | BufferUsage::MappedPersistent => vk::BufferUsageFlags::default(),
             BufferUsage::Staged | BufferUsage::StagedPersistent => {
@@ -108,7 +108,7 @@ impl Buffer {
             },
         )?;
 
-        let mut buffer = Self {
+        Ok(Self {
             size,
             context,
             buffer,
@@ -117,8 +117,19 @@ impl Buffer {
             ty,
             usage,
             staging_buffer: None,
-        };
+        })
+    }
+    /// Creates a new buffer and fills it with vertex data using staging
+    /// buffer. Buffer will be the same size as provided data.
+    pub fn new<T>(
+        context: Rc<VulkanContext>,
+        ty: BufferType,
+        usage: BufferUsage,
+        data: &[T],
+    ) -> Result<Self, Error> {
+        let size = (mem::size_of::<T>() * data.len()) as DeviceSize;
 
+        let mut buffer = Self::new_uninit(context, ty, usage, size)?;
         // Fill the buffer with provided data
         buffer.fill(0, data)?;
         Ok(buffer)
@@ -131,8 +142,8 @@ impl Buffer {
     /// `offset`: Specifies the offset in bytes into buffer to map
     pub fn write<F>(
         &mut self,
-        size: vk::DeviceSize,
-        offset: vk::DeviceSize,
+        size: DeviceSize,
+        offset: DeviceSize,
         write_func: F,
     ) -> Result<(), Error>
     where
@@ -148,7 +159,9 @@ impl Buffer {
             BufferUsage::Staged => self.write_staged(size, offset, write_func),
             BufferUsage::StagedPersistent => self.write_staged_persistent(offset, write_func),
             BufferUsage::Mapped => self.write_mapped(offset, write_func),
-            BufferUsage::MappedPersistent => self.write_mapped_persistent(size, offset, write_func),
+            BufferUsage::MappedPersistent => {
+                self.write_mapped_persistent(size, offset, write_func)
+            }
         }
     }
 
@@ -156,8 +169,8 @@ impl Buffer {
     // Will map the whole buffer
     fn write_mapped_persistent<F>(
         &self,
-        size: vk::DeviceSize,
-        offset: vk::DeviceSize,
+        size: DeviceSize,
+        offset: DeviceSize,
         write_func: F,
     ) -> Result<(), Error>
     where
@@ -177,7 +190,7 @@ impl Buffer {
 
     // Updates memory by mapping and unmapping
     // Will map the whole buffer
-    fn write_mapped<F>(&self, offset: vk::DeviceSize, write_func: F) -> Result<(), Error>
+    fn write_mapped<F>(&self, offset: DeviceSize, write_func: F) -> Result<(), Error>
     where
         F: FnOnce(*mut u8),
     {
@@ -194,8 +207,8 @@ impl Buffer {
 
     fn write_staged<F>(
         &self,
-        size: vk::DeviceSize,
-        offset: vk::DeviceSize,
+        size: DeviceSize,
+        offset: DeviceSize,
         write_func: F,
     ) -> Result<(), Error>
     where
@@ -228,7 +241,7 @@ impl Buffer {
 
     fn write_staged_persistent<F>(
         &mut self,
-        offset: vk::DeviceSize,
+        offset: DeviceSize,
         write_func: F,
     ) -> Result<(), Error>
     where
@@ -268,7 +281,7 @@ impl Buffer {
     /// Fills the buffer  with provided data
     /// Uses write internally
     /// data cannot be larger in size than maximum buffer size
-    pub fn fill<T: Sized>(&mut self, offset: vk::DeviceSize, data: &[T]) -> Result<(), Error> {
+    pub fn fill<T: Sized>(&mut self, offset: DeviceSize, data: &[T]) -> Result<(), Error> {
         let size = mem::size_of::<T>() * data.len();
 
         self.write(size as _, offset, |mapped| unsafe {
@@ -322,7 +335,7 @@ impl Drop for Buffer {
 /// Creates a suitable general purpose staging buffer
 pub fn create_staging(
     allocator: &Allocator,
-    size: vk::DeviceSize,
+    size: DeviceSize,
     mapped: bool,
 ) -> Result<(vk::Buffer, vk_mem::Allocation, vk_mem::AllocationInfo), Error> {
     let (buffer, allocation, allocation_info) = allocator.create_buffer(
@@ -352,8 +365,8 @@ pub fn copy(
     queue: vk::Queue,
     src_buffer: vk::Buffer,
     dst_buffer: vk::Buffer,
-    size: vk::DeviceSize,
-    offset: vk::DeviceSize,
+    size: DeviceSize,
+    offset: DeviceSize,
 ) -> Result<(), Error> {
     let region = vk::BufferCopy {
         src_offset: 0,
