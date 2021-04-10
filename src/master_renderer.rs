@@ -9,7 +9,7 @@ use vulkan::renderpass::*;
 use vulkan::texture::*;
 use vulkan::{device, semaphore};
 use vulkan::{fence, Extent};
-use vulkan_sandbox::vulkan;
+use vulkan_sandbox::{camera::Camera, vulkan};
 use vulkan_sandbox::{material::*, mesh::Mesh, vulkan::RenderPass};
 
 use vulkan::swapchain;
@@ -207,8 +207,6 @@ impl MasterRenderer {
                 samples: context.msaa_samples(),
             },
         )?;
-
-        log::debug!("Created attachments");
 
         let renderpass = create_renderpass(
             context.device_ref(),
@@ -408,6 +406,7 @@ impl MasterRenderer {
         window: &glfw::Window,
         elapsed: f32,
         _dt: f32,
+        camera: &Camera,
     ) -> Result<(), vulkan::Error> {
         if self.should_resize {
             self.resize(window)?;
@@ -450,17 +449,19 @@ impl MasterRenderer {
         // Reset fence before
         fence::reset(device, &[self.in_flight_fences[self.current_frame]])?;
 
+        let view_projection = camera.projection() * camera.calculate_view();
+
         data.object_buffer.fill(
             0,
             &[
                 ObjectData {
-                    mvp: Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.5))
-                        * Mat4::from_rotation_y(elapsed)
-                        * Mat4::from_scale(0.25),
+                    mvp: view_projection
+                        * Mat4::from_translation(Vec3::new(elapsed.sin() * 0.5, 0.0, 0.5))
+                        * Mat4::from_rotation_y(elapsed),
                 },
                 ObjectData {
-                    mvp: Mat4::from_translation(Vec3::new(0.4, 0.0, (elapsed * 2.0).cos() + 0.5))
-                        * Mat4::from_scale(0.15),
+                    mvp: view_projection
+                        * Mat4::from_translation(Vec3::new(3.0, 0.0, (elapsed * 2.0).cos() + 0.5)),
                 },
             ],
         )?;

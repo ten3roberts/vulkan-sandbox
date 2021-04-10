@@ -116,4 +116,9 @@ impl Material {
     pub fn albedo(&self) -> &Texture {
         &self.albedo
     }
+
+    /// Return the material's sampler.
+    pub fn sampler(&self) -> &Sampler {
+        &self.sampler
+    }
 }

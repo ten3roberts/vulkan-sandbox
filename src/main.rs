@@ -1,15 +1,16 @@
 use log::*;
 use master_renderer::MasterRenderer;
 use std::{error::Error, rc::Rc, thread, time::Duration};
+use ultraviolet::Vec3;
 
 // mod master_renderer;
-use vulkan_sandbox::clock::*;
 use vulkan_sandbox::logger;
 use vulkan_sandbox::vulkan;
+use vulkan_sandbox::{camera::Camera, clock::*};
 
 use vulkan::VulkanContext;
 
-use glfw;
+use glfw::{self, Action, Key, WindowEvent};
 
 mod master_renderer;
 
@@ -36,6 +37,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut frame_clock = Clock::new();
     let mut last_status = Clock::new();
 
+    let aspect = 800.0 / 600.0;
+    let mut perspective_camera =
+        Camera::perspective(Vec3::new(0.0, 0.0, 10.0), 1.0, 800.0 / 600.0, 0.1, 1000.0);
+    let mut orthograpic_camera =
+        Camera::orthographic(Vec3::new(0.5, 0.0, 100.0), aspect * 8.0, 8.0, 0.1, 1000.0);
+
+    let mut camera = &mut perspective_camera;
+
     while !window.should_close() {
         let elapsed = clock.elapsed();
         let dt = frame_clock.reset();
@@ -44,8 +53,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         for (_, event) in glfw::flush_messages(&events) {
             match event {
-                glfw::WindowEvent::CursorPos(_, _) => {}
-                glfw::WindowEvent::FramebufferSize(w, h) => {
+                WindowEvent::Key(Key::F1, _, Action::Release, _) => {
+                    camera = &mut perspective_camera
+                }
+                WindowEvent::Key(Key::F2, _, Action::Release, _) => {
+                    camera = &mut orthograpic_camera
+                }
+                WindowEvent::CursorPos(_, _) => {}
+                WindowEvent::FramebufferSize(w, h) => {
                     info!("Resized: {}, {}", w, h);
                     master_renderer.on_resize();
                     thread::sleep(Duration::from_millis(100));
@@ -57,6 +72,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
+        camera.position.y = (elapsed.secs() * 0.25).sin() * 5.0;
+
         if last_status.elapsed().secs() > 1.0 {
             last_status.reset();
             log::info!(
@@ -67,7 +84,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             );
         }
 
-        master_renderer.draw(&window, elapsed.secs(), dt.secs())?;
+        master_renderer.draw(&window, elapsed.secs(), dt.secs(), &camera)?;
     }
 
     Ok(())
