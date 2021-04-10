@@ -186,11 +186,11 @@ impl Drop for VulkanContext {
 fn get_max_msaa_samples(sample_counts: vk::SampleCountFlags) -> vk::SampleCountFlags {
     if sample_counts.contains(vk::SampleCountFlags::TYPE_64) {
         vk::SampleCountFlags::TYPE_64
-    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_64) {
+    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_32) {
         vk::SampleCountFlags::TYPE_32
-    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_8) {
+    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_16) {
         vk::SampleCountFlags::TYPE_16
-    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_4) {
+    } else if sample_counts.contains(vk::SampleCountFlags::TYPE_8) {
         vk::SampleCountFlags::TYPE_8
     } else if sample_counts.contains(vk::SampleCountFlags::TYPE_4) {
         vk::SampleCountFlags::TYPE_4
