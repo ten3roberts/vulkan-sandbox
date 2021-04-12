@@ -136,6 +136,26 @@ impl Buffer {
     }
 
     /// Update the buffer data by mapping memory and filling it using the
+    /// provided closure.
+    /// `len`: Specifies the number of items of T to map into slice. (is ignored with persistent
+    /// usage).
+    /// `offset`: Specifies the offset in items T into buffer to map.
+    pub fn write_slice<T, F>(
+        &mut self,
+        len: DeviceSize,
+        offset: DeviceSize,
+        write_func: F,
+    ) -> Result<(), Error>
+    where
+        F: FnOnce(&mut [T]),
+    {
+        let size = len * mem::size_of::<T>() as u64;
+        self.write(size, offset * mem::size_of::<T>() as u64, |ptr| {
+            write_func(unsafe { std::slice::from_raw_parts_mut(ptr as *mut T, len as usize) })
+        })
+    }
+
+    /// Update the buffer data by mapping memory and filling it using the
     /// provided closure
     /// `size`: Specifies the number of bytes to map (is ignored with persistent
     /// usage)
@@ -287,6 +307,10 @@ impl Buffer {
         self.write(size as _, offset, |mapped| unsafe {
             std::ptr::copy_nonoverlapping(data.as_ptr() as *const T as *const u8, mapped, size)
         })
+    }
+
+    pub fn size(&self) -> DeviceSize {
+        self.size
     }
 
     /// Returns the raw vk buffer

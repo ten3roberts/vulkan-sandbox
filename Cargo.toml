@@ -12,6 +12,7 @@ ash = "0.32.0"
 glfw = { version = "0.41.0", features = [ "vulkan" ] }
 gltf = "0.15.2"
 log = "0.4.14"
+rand = "0.8.3"
 smallvec = "1.6.1"
 thiserror = "1.0.23"
 ultraviolet = { version = "0.8", features = [ "int" ] }
