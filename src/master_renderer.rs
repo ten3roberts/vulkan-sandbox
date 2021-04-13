@@ -14,7 +14,6 @@ use vulkan::texture::*;
 use vulkan::{device, semaphore};
 
 use vulkan::swapchain;
-use vulkan::{Buffer, BufferType, BufferUsage};
 
 use vulkan::commands::*;
 use vulkan::descriptors::*;
@@ -22,10 +21,9 @@ use vulkan::swapchain::*;
 use vulkan::Framebuffer;
 
 use glfw;
-use std::{error::Error, mem, rc::Rc};
+use std::{error::Error, rc::Rc};
 
 const FRAMES_IN_FLIGHT: usize = 2;
-const MAX_OBJECTS: usize = 8192;
 
 #[derive(Default)]
 #[repr(C)]
@@ -35,7 +33,6 @@ struct ObjectData {
 
 /// Represents data needed to be duplicated for each swapchain image
 struct PerFrameData {
-    object_buffer: Buffer,
     commandpool: CommandPool,
     commandbuffer: CommandBuffer,
     framebuffer: Framebuffer,
@@ -50,21 +47,12 @@ impl PerFrameData {
         color_attachment: &Texture,
         depth_attachment: &Texture,
         swapchain_image: &Texture,
-        descriptor_layout_cache: &mut DescriptorLayoutCache,
-        descriptor_allocator: &mut DescriptorAllocator,
     ) -> Result<Self, vulkan::Error> {
         let framebuffer = Framebuffer::new(
             context.device_ref(),
             &renderpass,
             &[color_attachment, depth_attachment, swapchain_image],
             swapchain_image.extent(),
-        )?;
-
-        let object_buffer = Buffer::new_uninit(
-            context.clone(),
-            BufferType::Storage,
-            BufferUsage::MappedPersistent,
-            (mem::size_of::<ObjectData>() * MAX_OBJECTS) as u64,
         )?;
 
         // Create and record command buffers
@@ -78,7 +66,6 @@ impl PerFrameData {
         let commandbuffer = commandpool.allocate(1)?.pop().unwrap();
 
         Ok(PerFrameData {
-            object_buffer,
             framebuffer,
             commandpool,
             commandbuffer,
@@ -187,8 +174,6 @@ impl MasterRenderer {
                     &color_attachment,
                     &depth_attachment,
                     swapchain_image,
-                    &mut descriptor_layout_cache,
-                    &mut descriptor_allocator,
                 )
             })
             .collect::<Result<ArrayVec<[PerFrameData; MAX_FRAMES]>, _>>()?;
@@ -306,8 +291,6 @@ impl MasterRenderer {
                 &self.color_attachment,
                 &self.depth_attachment,
                 swapchain_image,
-                &mut self.descriptor_layout_cache,
-                &mut self.descriptor_allocator,
             )?;
 
             self.per_frame_data.push(frame);
@@ -396,22 +379,6 @@ impl MasterRenderer {
         // Reset fence before
         fence::reset(device, &[self.in_flight_fences[self.current_frame]])?;
 
-        let view_projection = camera.projection() * camera.calculate_view();
-
-        frame
-            .object_buffer
-            .write_slice(MAX_OBJECTS as u64, 0, |slice| {
-                for (i, object) in scene.objects().iter().enumerate() {
-                    let object_data = ObjectData {
-                        mvp: view_projection
-                            * Mat4::from_translation(object.position)
-                            * Mat4::from_scale(0.1),
-                    };
-
-                    slice[i] = object_data;
-                }
-            })?;
-
         // Submit command buffers
         frame.commandbuffer.submit(
             self.context.graphics_queue(),
@@ -443,6 +410,16 @@ impl MasterRenderer {
     /// Get a reference to the master renderer's material.
     pub fn material(&self) -> &Rc<Material> {
         &self.material
+    }
+
+    /// Get a reference to the master renderer's descriptor layout cache.
+    pub fn descriptor_layout_cache(&self) -> &DescriptorLayoutCache {
+        &self.descriptor_layout_cache
+    }
+
+    /// Get a reference to the master renderer's descriptor allocator.
+    pub fn descriptor_allocator(&self) -> &DescriptorAllocator {
+        &self.descriptor_allocator
     }
 }
 
