@@ -13,8 +13,6 @@ use vulkan::VulkanContext;
 
 use glfw::{self, Action, Key, WindowEvent};
 
-mod master_renderer;
-
 fn main() -> Result<(), Box<dyn Error>> {
     logger::init();
 
@@ -107,7 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         camera.position.y = (elapsed.secs() * 0.25).sin() * 2.0;
 
-        if last_spawn.elapsed().secs() > 0.01 && scene.objects().len() < 5000 {
+        if scene.objects().len() < 5000 {
             last_spawn.reset();
             let position = Vec3::new(
                 rng.gen_range(-15.0..15.0),
@@ -127,10 +125,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         if last_status.elapsed().secs() > 1.0 {
             last_status.reset();
             log::info!(
-                "Elapsed: {:?}\tFrametime: {:?}\tFramerate: {}",
+                "Elapsed: {:?}\tFrametime: {:?}\tFramerate: {}\t Objects: {:?}",
                 elapsed,
                 dt,
-                1.0 / dt.secs()
+                1.0 / dt.secs(),
+                scene.objects().len(),
             );
         }
 

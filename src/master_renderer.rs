@@ -3,12 +3,15 @@ use ash::vk;
 use log::info;
 use ultraviolet::mat::*;
 
+use crate::mesh_renderer::MeshRenderer;
+
+use super::*;
+
 use vulkan::context::*;
+use vulkan::fence;
 use vulkan::renderpass::*;
 use vulkan::texture::*;
 use vulkan::{device, semaphore};
-use vulkan::{fence, Extent};
-use vulkan_sandbox::*;
 
 use vulkan::swapchain;
 use vulkan::{Buffer, BufferType, BufferUsage};
@@ -38,9 +41,6 @@ struct PerFrameData {
     framebuffer: Framebuffer,
     // The fence currently associated to this image_index
     image_in_flight: vk::Fence,
-    set: vk::DescriptorSet,
-    set_layout: vk::DescriptorSetLayout,
-    out_of_date: bool,
 }
 
 impl PerFrameData {
@@ -67,19 +67,6 @@ impl PerFrameData {
             (mem::size_of::<ObjectData>() * MAX_OBJECTS) as u64,
         )?;
 
-        let mut set = Default::default();
-        let mut set_layout = Default::default();
-
-        DescriptorBuilder::new()
-            .bind_storage_buffer(0, vk::ShaderStageFlags::VERTEX, &object_buffer)
-            .build(
-                context.device(),
-                descriptor_layout_cache,
-                descriptor_allocator,
-                &mut set,
-            )?
-            .layout(descriptor_layout_cache, &mut set_layout)?;
-
         // Create and record command buffers
         let commandpool = CommandPool::new(
             context.device_ref(),
@@ -96,67 +83,7 @@ impl PerFrameData {
             commandpool,
             commandbuffer,
             image_in_flight: vk::Fence::null(),
-            set,
-            set_layout,
-            out_of_date: true,
         })
-    }
-
-    fn record(
-        &self,
-        renderpass: &RenderPass,
-        extent: Extent,
-        scene: &Scene,
-    ) -> Result<(), vulkan::Error> {
-        self.commandpool.reset(false)?;
-        let commandbuffer = &self.commandbuffer;
-
-        commandbuffer.begin(Default::default())?;
-
-        commandbuffer.begin_renderpass(
-            &renderpass,
-            &self.framebuffer,
-            extent,
-            // TODO Autogenerate clear color based on one value
-            &[
-                vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [0.0, 0.0, 0.0, 0.0],
-                    },
-                },
-                vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue {
-                        depth: 1.0,
-                        stencil: 0,
-                    },
-                },
-            ],
-        );
-
-        // Generate draw commands for each object in scene
-        for (i, object) in scene.objects().iter().enumerate() {
-            // Bind material
-            let material = &object.material;
-            let mesh = &object.mesh;
-
-            // log::debug!("Recording object: \t{}", i);
-
-            commandbuffer.bind_pipeline(material.pipeline());
-            commandbuffer.bind_descriptor_sets(
-                material.pipeline_layout(),
-                0,
-                &[material.set(), self.set],
-            );
-
-            commandbuffer.bind_vertexbuffers(0, &[&mesh.vertex_buffer()]);
-
-            commandbuffer.bind_indexbuffer(&mesh.index_buffer(), 0);
-            commandbuffer.draw_indexed(mesh.index_count(), 1, 0, 0, i as u32);
-        }
-
-        commandbuffer.end_renderpass();
-        commandbuffer.end()?;
-        Ok(())
     }
 }
 
@@ -187,6 +114,8 @@ pub struct MasterRenderer {
 
     // Drop context last
     context: Rc<VulkanContext>,
+
+    mesh_renderer: MeshRenderer,
 }
 
 impl MasterRenderer {
@@ -270,6 +199,13 @@ impl MasterRenderer {
             albedo: "data/textures/uv.png".into(),
         };
 
+        let mesh_renderer = MeshRenderer::new(
+            context.clone(),
+            &mut descriptor_layout_cache,
+            &mut descriptor_allocator,
+            swapchain.image_count() as usize,
+        )?;
+
         let material = Material::new(
             context.clone(),
             &mut descriptor_layout_cache,
@@ -277,7 +213,7 @@ impl MasterRenderer {
             material_info,
             swapchain.extent(),
             &renderpass,
-            per_frame_data[0].set_layout,
+            mesh_renderer.set_layout(),
         )?;
 
         let material = Rc::new(material);
@@ -298,6 +234,7 @@ impl MasterRenderer {
             depth_attachment,
             descriptor_allocator,
             per_frame_data,
+            mesh_renderer,
         };
 
         Ok(master_renderer)
@@ -307,15 +244,6 @@ impl MasterRenderer {
     // Does not recreate the renderer immediately but waits for next frame
     pub fn on_resize(&mut self) {
         self.should_resize = true;
-    }
-
-    // Resets commandpool and regenerates draw commands
-    fn record(&mut self, scene: &Scene) -> Result<(), vulkan::Error> {
-        self.per_frame_data
-            .iter()
-            .map(|frame| frame.record(&self.renderpass, self.swapchain.extent(), scene))
-            .collect::<Result<(), _>>()?;
-        Ok(())
     }
 
     // Does the resizing
@@ -395,14 +323,6 @@ impl MasterRenderer {
         camera: &Camera,
         scene: &mut Scene,
     ) -> Result<(), vulkan::Error> {
-        // Re-record commandbuffers when scene changes
-        if scene.is_modified() {
-            scene.clear_modified();
-            self.per_frame_data
-                .iter_mut()
-                .for_each(|frame| frame.out_of_date = true);
-        }
-
         if self.should_resize {
             self.resize(window)?;
         }
@@ -427,21 +347,48 @@ impl MasterRenderer {
         };
 
         // Extract data for this image in swapchain
-        let data = &mut self.per_frame_data[image_index as usize];
+        let frame = &mut self.per_frame_data[image_index as usize];
 
         // Wait if previous frame is using this image
-        if data.image_in_flight != ash::vk::Fence::null() {
-            fence::wait(device, &[data.image_in_flight], true)?;
+        if frame.image_in_flight != ash::vk::Fence::null() {
+            fence::wait(device, &[frame.image_in_flight], true)?;
         }
 
         // Mark the image as being used by the frame in flight
-        data.image_in_flight = self.in_flight_fences[self.current_frame];
+        frame.image_in_flight = self.in_flight_fences[self.current_frame];
 
-        if data.out_of_date {
-            data.out_of_date = false;
-            data.record(&self.renderpass, self.swapchain.extent(), scene)?;
-        }
+        frame.commandpool.reset(false)?;
+        frame
+            .commandbuffer
+            .begin(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
 
+        frame.commandbuffer.begin_renderpass(
+            &self.renderpass,
+            &frame.framebuffer,
+            self.swapchain.extent(),
+            // TODO Autogenerate clear color based on one value
+            &[
+                vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 0.0],
+                    },
+                },
+                vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
+                },
+            ],
+        );
+
+        self.mesh_renderer
+            .draw(&frame.commandbuffer, camera, image_index, scene)?;
+
+        frame.commandbuffer.end_renderpass();
+        frame.commandbuffer.end()?;
+
+        // Present
         let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
 
         let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
@@ -451,7 +398,8 @@ impl MasterRenderer {
 
         let view_projection = camera.projection() * camera.calculate_view();
 
-        data.object_buffer
+        frame
+            .object_buffer
             .write_slice(MAX_OBJECTS as u64, 0, |slice| {
                 for (i, object) in scene.objects().iter().enumerate() {
                     let object_data = ObjectData {
@@ -465,7 +413,7 @@ impl MasterRenderer {
             })?;
 
         // Submit command buffers
-        data.commandbuffer.submit(
+        frame.commandbuffer.submit(
             self.context.graphics_queue(),
             &wait_semaphores,
             &signal_semaphores,

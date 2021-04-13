@@ -335,7 +335,7 @@ impl AsRef<vk::Buffer> for Buffer {
     }
 }
 
-impl Into<vk::Buffer> for Buffer {
+impl Into<vk::Buffer> for &Buffer {
     fn into(self) -> vk::Buffer {
         self.buffer
     }

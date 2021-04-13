@@ -144,10 +144,8 @@ impl CommandBuffer {
     /// Starts recording of a commandbuffer
     pub fn begin(&self, flags: vk::CommandBufferUsageFlags) -> Result<(), Error> {
         let begin_info = vk::CommandBufferBeginInfo {
-            s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
-            p_next: std::ptr::null(),
             flags,
-            p_inheritance_info: std::ptr::null(),
+            ..Default::default()
         };
 
         unsafe {
@@ -361,6 +359,33 @@ impl CommandBuffer {
         }
     }
 
+    pub fn submit_multiple(
+        device: &Device,
+        commandbuffers: &[vk::CommandBuffer],
+        queue: vk::Queue,
+        wait_semaphores: &[vk::Semaphore],
+        signal_semaphores: &[vk::Semaphore],
+        fence: vk::Fence,
+        wait_stages: &[vk::PipelineStageFlags],
+    ) -> Result<(), Error> {
+        let submit_info = vk::SubmitInfo {
+            s_type: vk::StructureType::SUBMIT_INFO,
+            p_next: std::ptr::null(),
+            wait_semaphore_count: wait_semaphores.len() as u32,
+            p_wait_semaphores: wait_semaphores.as_ptr(),
+            p_wait_dst_stage_mask: wait_stages.as_ptr(),
+            command_buffer_count: commandbuffers.len() as u32,
+            p_command_buffers: commandbuffers.as_ptr(),
+            signal_semaphore_count: signal_semaphores.len() as u32,
+            p_signal_semaphores: signal_semaphores.as_ptr(),
+        };
+
+        unsafe { device.queue_submit(queue, &[submit_info], fence) }?;
+
+        Ok(())
+    }
+
+    /// Submits a single commandbuffer.
     pub fn submit(
         &self,
         queue: vk::Queue,
@@ -384,5 +409,17 @@ impl CommandBuffer {
         unsafe { self.device.queue_submit(queue, &[submit_info], fence) }?;
 
         Ok(())
+    }
+}
+
+impl AsRef<vk::CommandBuffer> for CommandBuffer {
+    fn as_ref(&self) -> &vk::CommandBuffer {
+        &self.commandbuffer
+    }
+}
+
+impl Into<vk::CommandBuffer> for &CommandBuffer {
+    fn into(self) -> vk::CommandBuffer {
+        self.commandbuffer
     }
 }
