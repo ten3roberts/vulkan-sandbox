@@ -36,4 +36,7 @@ pub enum Error {
 
     #[error("Unsupported layout transition from {0:?} to {1:?}")]
     UnsupportedLayoutTransition(vk::ImageLayout, vk::ImageLayout),
+
+    #[error("SPIR-V reflection error: {0}")]
+    SPVReflectError(&'static str),
 }

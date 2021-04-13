@@ -1,11 +1,12 @@
 # TODO
 - Group resize events
-- Extent instead of width and height
+- [X] Extent instead of width and height
 - Materials
 - Descriptor set abstraction
 - Resource Cache
 - Change all slices to AsRef slices
-- Abstract with and height
+- [X] Abstract width and height
 - Refactor master renderer to resize better by using moving
   to persistent and non persistent struct and calling new
-- Pipeline layout reflection
+- [X] Pipeline layout reflection
+- Remove context

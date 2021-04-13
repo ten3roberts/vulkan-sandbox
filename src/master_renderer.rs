@@ -198,7 +198,6 @@ impl MasterRenderer {
             material_info,
             swapchain.extent(),
             &renderpass,
-            mesh_renderer.set_layout(),
         )?;
 
         let material = Rc::new(material);

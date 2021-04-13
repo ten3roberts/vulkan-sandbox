@@ -25,7 +25,7 @@ pub use context::VulkanContext;
 pub use error::Error;
 pub use extent::Extent;
 pub use framebuffer::Framebuffer;
-pub use pipeline::{Pipeline, PipelineLayout};
+pub use pipeline::Pipeline;
 pub use renderpass::{AttachmentInfo, AttachmentReference, LoadOp, RenderPass, StoreOp};
 pub use sampler::{Sampler, SamplerInfo};
 pub use swapchain::Swapchain;

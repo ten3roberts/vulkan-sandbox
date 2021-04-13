@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
 use super::pipeline::Pipeline;
-use super::pipeline::PipelineLayout;
 use super::renderpass::RenderPass;
 use super::Error;
 use super::{
@@ -10,9 +9,9 @@ use super::{
 };
 use super::{framebuffer::Framebuffer, Extent};
 use arrayvec::ArrayVec;
-use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
+use ash::{version::DeviceV1_0, vk::PipelineLayout};
 
 /// Maximum number of bound vertex buffers
 /// This is required to avoid dynamically allocating a list of buffers when
@@ -239,9 +238,9 @@ impl CommandBuffer {
         }
     }
 
-    pub fn bind_descriptor_sets(
+    pub fn bind_descriptor_sets<P: AsRef<PipelineLayout>>(
         &self,
-        pipeline_layout: &PipelineLayout,
+        pipeline_layout: &P,
         first_set: u32,
         descriptor_sets: &[vk::DescriptorSet],
     ) {
@@ -249,7 +248,7 @@ impl CommandBuffer {
             self.device.cmd_bind_descriptor_sets(
                 self.commandbuffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                pipeline_layout.layout(),
+                *pipeline_layout.as_ref(),
                 first_set,
                 descriptor_sets,
                 &[],

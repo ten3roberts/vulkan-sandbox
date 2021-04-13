@@ -20,7 +20,6 @@ pub struct MaterialInfo {
 pub struct Material {
     albedo: Texture,
     pipeline: Pipeline,
-    pipeline_layout: PipelineLayout,
     sampler: Sampler,
     set: DescriptorSet,
     set_layout: DescriptorSetLayout,
@@ -36,7 +35,6 @@ impl Material {
         info: MaterialInfo,
         extent: Extent,
         renderpass: &RenderPass,
-        object_set: DescriptorSetLayout,
     ) -> Result<Self, Error> {
         let albedo = Texture::load(context.clone(), info.albedo)?;
 
@@ -67,16 +65,12 @@ impl Material {
         let vertexshader = File::open(info.vertexshader)?;
         let fragmentshader = File::open(info.fragmentshader)?;
 
-        // No global set 0 for now
-        let pipeline_layout =
-            PipelineLayout::new(context.device_ref(), &[set_layout, object_set])?;
-
         let pipeline = Pipeline::new(
             context.device_ref(),
+            layout_cache,
             vertexshader,
             fragmentshader,
             extent,
-            &pipeline_layout,
             renderpass,
             mesh::Vertex::binding_description(),
             mesh::Vertex::attribute_descriptions(),
@@ -86,7 +80,6 @@ impl Material {
         Ok(Self {
             albedo,
             pipeline,
-            pipeline_layout,
             sampler,
             set,
             set_layout,
@@ -96,10 +89,6 @@ impl Material {
     /// Returns a reference to the material pipeline.
     pub fn pipeline(&self) -> &Pipeline {
         &self.pipeline
-    }
-
-    pub fn pipeline_layout(&self) -> &PipelineLayout {
-        &self.pipeline_layout
     }
 
     /// Returns the material descriptor set.

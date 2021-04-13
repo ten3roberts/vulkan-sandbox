@@ -1,4 +1,4 @@
-use super::Error;
+use super::{descriptors::DescriptorLayoutCache, Error};
 use super::{renderpass::*, Extent};
 use ash::version::DeviceV1_0;
 use ash::Device;
@@ -7,18 +7,22 @@ use std::{ffi::CString, rc::Rc};
 
 use ash::vk;
 
+mod shader;
+use shader::*;
+
 pub struct Pipeline {
     device: Rc<Device>,
     pipeline: vk::Pipeline,
+    layout: vk::PipelineLayout,
 }
 
 impl Pipeline {
     pub fn new<R>(
         device: Rc<Device>,
+        layout_cache: &mut DescriptorLayoutCache,
         mut vertexshader: R,
         mut fragmentshader: R,
         extent: Extent,
-        layout: &PipelineLayout,
         renderpass: &RenderPass,
         vertex_binding: vk::VertexInputBindingDescription,
         vertex_attributes: &[vk::VertexInputAttributeDescription],
@@ -28,22 +32,27 @@ impl Pipeline {
         R: Read + Seek,
     {
         // Read and create the shader modules
-        let vert_code = ash::util::read_spv(&mut vertexshader)?;
-        let frag_code = ash::util::read_spv(&mut fragmentshader)?;
+        let mut vert_code = Vec::new();
+        vertexshader.read_to_end(&mut vert_code)?;
 
-        let vertexshader = create_shadermodule(&device, &vert_code)?;
-        let fragmentshader = create_shadermodule(&device, &frag_code)?;
+        let mut frag_code = Vec::new();
+        fragmentshader.read_to_end(&mut frag_code)?;
+
+        let vertexshader = ShaderModule::new(&device, &mut vertexshader)?;
+        let fragmentshader = ShaderModule::new(&device, &mut fragmentshader)?;
+
+        let layout = shader::reflect(&device, &[&vertexshader, &fragmentshader], layout_cache)?;
 
         let entrypoint = CString::new("main").unwrap();
 
         let shader_stages = [
             vk::PipelineShaderStageCreateInfo::builder()
-                .module(vertexshader)
+                .module(vertexshader.module)
                 .stage(vk::ShaderStageFlags::VERTEX)
                 .name(&entrypoint)
                 .build(),
             vk::PipelineShaderStageCreateInfo::builder()
-                .module(fragmentshader)
+                .module(fragmentshader.module)
                 .stage(vk::ShaderStageFlags::FRAGMENT)
                 .name(&entrypoint)
                 .build(),
@@ -141,7 +150,7 @@ impl Pipeline {
             .multisample_state(&multisampling)
             .color_blend_state(&color_blending)
             .depth_stencil_state(&depth_stencil)
-            .layout(layout.layout)
+            .layout(layout)
             .render_pass(renderpass.renderpass())
             .subpass(0)
             .build();
@@ -153,55 +162,54 @@ impl Pipeline {
         }[0];
 
         // Destroy shader modules
-        unsafe { device.destroy_shader_module(vertexshader, None) };
-        unsafe { device.destroy_shader_module(fragmentshader, None) };
+        vertexshader.destroy(&device);
+        fragmentshader.destroy(&device);
 
-        Ok(Pipeline { device, pipeline })
+        Ok(Pipeline {
+            device,
+            pipeline,
+            layout,
+        })
     }
 
+    /// Returns the raw vulkan pipeline handle.
     pub fn pipeline(&self) -> vk::Pipeline {
         self.pipeline
+    }
+
+    // Returns the pipeline layout.
+    pub fn layout(&self) -> vk::PipelineLayout {
+        self.layout
+    }
+}
+
+impl AsRef<vk::Pipeline> for Pipeline {
+    fn as_ref(&self) -> &vk::Pipeline {
+        &self.pipeline
+    }
+}
+
+impl Into<vk::Pipeline> for &Pipeline {
+    fn into(self) -> vk::Pipeline {
+        self.pipeline
+    }
+}
+
+impl AsRef<vk::PipelineLayout> for Pipeline {
+    fn as_ref(&self) -> &vk::PipelineLayout {
+        &self.layout
+    }
+}
+
+impl Into<vk::PipelineLayout> for &Pipeline {
+    fn into(self) -> vk::PipelineLayout {
+        self.layout
     }
 }
 
 impl Drop for Pipeline {
     fn drop(&mut self) {
         unsafe { self.device.destroy_pipeline(self.pipeline, None) }
-    }
-}
-
-pub struct PipelineLayout {
-    layout: vk::PipelineLayout,
-    device: Rc<Device>,
-}
-
-impl PipelineLayout {
-    pub fn new(
-        device: Rc<Device>,
-        set_layouts: &[vk::DescriptorSetLayout],
-    ) -> Result<Self, Error> {
-        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(set_layouts)
-            .push_constant_ranges(&[]);
-
-        let layout = unsafe { device.create_pipeline_layout(&pipeline_layout_info, None)? };
-
-        Ok(PipelineLayout { device, layout })
-    }
-
-    pub fn layout(&self) -> vk::PipelineLayout {
-        self.layout
-    }
-}
-
-impl Drop for PipelineLayout {
-    fn drop(&mut self) {
         unsafe { self.device.destroy_pipeline_layout(self.layout, None) }
     }
-}
-
-fn create_shadermodule(device: &Device, code: &[u32]) -> Result<vk::ShaderModule, Error> {
-    let create_info = vk::ShaderModuleCreateInfo::builder().code(code);
-    let shadermodule = unsafe { device.create_shader_module(&create_info, None)? };
-    Ok(shadermodule)
 }

@@ -5,9 +5,7 @@ use ultraviolet::*;
 use ash::vk;
 use vk::{DescriptorSet, DescriptorSetLayout};
 
-use crate::{
-    master_renderer::MasterRenderer, vulkan::descriptors::DescriptorBuilder, Camera, Scene,
-};
+use crate::{vulkan::descriptors::DescriptorBuilder, Camera, Scene};
 
 use super::vulkan;
 use super::Material;
@@ -137,7 +135,7 @@ impl MeshRenderer {
             let mesh = &object.mesh;
             commandbuffer.bind_pipeline(material.pipeline());
             commandbuffer.bind_descriptor_sets(
-                material.pipeline_layout(),
+                material.pipeline(),
                 0,
                 &[material.set(), frame.set],
             );
