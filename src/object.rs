@@ -2,11 +2,11 @@ use std::rc::Rc;
 
 use ultraviolet::Vec3;
 
-use crate::{material::Material, mesh::Mesh};
+use crate::{material::Material, mesh::Mesh, resources::Handle};
 
 /// Represents an object that can be rendered.
 pub struct Object {
     pub material: Rc<Material>,
-    pub mesh: Rc<Mesh>,
+    pub mesh: Handle<Mesh>,
     pub position: Vec3,
 }

@@ -7,6 +7,7 @@ pub mod material;
 pub mod mesh;
 pub mod mesh_renderer;
 pub mod object;
+pub mod resources;
 pub mod scene;
 pub mod vulkan;
 

@@ -4,9 +4,11 @@ use rand::prelude::*;
 use std::{error::Error, rc::Rc, thread, time::Duration};
 use ultraviolet::Vec3;
 
+use vulkan_sandbox::camera::Camera;
+use vulkan_sandbox::clock::*;
 use vulkan_sandbox::vulkan;
-use vulkan_sandbox::{camera::Camera, clock::*};
 
+use resources::*;
 use vulkan_sandbox::*;
 
 use vulkan::VulkanContext;
@@ -43,13 +45,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut camera = &mut perspective_camera;
 
-    let (document, buffers, _images) = gltf::import("./data/models/monkey.gltf")?;
-    let mesh = Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)?;
-    let mesh = Rc::new(mesh);
+    let mut meshes = ResourceCache::new();
 
-    let (document, buffers, _images) = gltf::import("./data/models/cube.gltf")?;
-    let mesh2 = Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)?;
-    let mesh2 = Rc::new(mesh2);
+    let (document, buffers, _) = gltf::import("./data/models/monkey.gltf")?;
+
+    let monkey = meshes.insert("monkey", || {
+        Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)
+    })?;
+
+    let (document, buffers, _) = gltf::import("./data/models/cube.gltf")?;
+    let cube = meshes.insert("cube", || {
+        Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)
+            .map_err(|e| Box::new(e))
+    })?;
 
     let mut scene = Scene::new();
     let mut master_renderer = MasterRenderer::new(context.clone(), &window)?;
@@ -61,13 +69,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         Vec3::new(2.0, 0.0, 3.0),
     ];
 
-    let meshes = [mesh.clone(), mesh2.clone(), mesh.clone(), mesh.clone()];
-
-    for (position, mesh) in positions.iter().zip(&meshes) {
+    for position in &positions {
         let position = *position;
         scene.add(Object {
             material: master_renderer.material().clone(),
-            mesh: mesh.clone(),
+            mesh: monkey,
             position,
         });
     }
@@ -116,7 +122,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             // log::info!("Adding: {:?}", position);
 
             scene.add(Object {
-                mesh: mesh2.clone(),
+                mesh: cube,
                 material: master_renderer.material().clone(),
                 position,
             })
@@ -133,7 +139,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             );
         }
 
-        master_renderer.draw(&window, dt.secs(), &camera, &mut scene)?;
+        master_renderer.draw(&window, dt.secs(), &camera, &mut scene, &meshes)?;
     }
 
     Ok(())
