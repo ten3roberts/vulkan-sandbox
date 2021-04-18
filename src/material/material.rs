@@ -1,40 +1,35 @@
-use std::{fs::File, path::PathBuf, rc::Rc};
+use std::{path::PathBuf, rc::Rc};
 
-use super::vulkan;
-use crate::mesh;
+use super::MaterialEffect;
+use crate::resources::Handle;
+use crate::vulkan;
 use ash::vk;
-use vulkan::pipeline::*;
+use vulkan::descriptors::*;
 use vulkan::sampler::*;
 use vulkan::texture::*;
 use vulkan::Error;
-use vulkan::VertexDesc;
 use vulkan::VulkanContext;
-use vulkan::{descriptors::*, Extent, RenderPass};
 
 pub struct MaterialInfo {
-    pub vertexshader: PathBuf,
-    pub fragmentshader: PathBuf,
     pub albedo: PathBuf,
 }
 
 pub struct Material {
+    effect: Handle<MaterialEffect>,
     albedo: Texture,
-    pipeline: Pipeline,
     sampler: Sampler,
     set: DescriptorSet,
     set_layout: DescriptorSetLayout,
 }
 
 impl Material {
-    /// Creates a new material by loading shaders and textures from filesystem.
-    /// `extent` refers to the renderpass and pipeline extent.
+    /// Creates a new material derived from a base material
     pub fn new(
         context: Rc<VulkanContext>,
         layout_cache: &mut DescriptorLayoutCache,
         descriptor_allocator: &mut DescriptorAllocator,
+        effect: Handle<MaterialEffect>,
         info: MaterialInfo,
-        extent: Extent,
-        renderpass: &RenderPass,
     ) -> Result<Self, Error> {
         let albedo = Texture::load(context.clone(), info.albedo)?;
 
@@ -62,33 +57,13 @@ impl Material {
             )?
             .layout(layout_cache, &mut set_layout)?;
 
-        let vertexshader = File::open(info.vertexshader)?;
-        let fragmentshader = File::open(info.fragmentshader)?;
-
-        let pipeline = Pipeline::new(
-            context.device_ref(),
-            layout_cache,
-            vertexshader,
-            fragmentshader,
-            extent,
-            renderpass,
-            mesh::Vertex::binding_description(),
-            mesh::Vertex::attribute_descriptions(),
-            context.msaa_samples(),
-        )?;
-
         Ok(Self {
             albedo,
-            pipeline,
+            effect,
             sampler,
             set,
             set_layout,
         })
-    }
-
-    /// Returns a reference to the material pipeline.
-    pub fn pipeline(&self) -> &Pipeline {
-        &self.pipeline
     }
 
     /// Returns the material descriptor set.
@@ -109,5 +84,10 @@ impl Material {
     /// Return the material's sampler.
     pub fn sampler(&self) -> &Sampler {
         &self.sampler
+    }
+
+    /// Get a reference to the material's base material.
+    pub fn effect(&self) -> &Handle<MaterialEffect> {
+        &self.effect
     }
 }

@@ -8,6 +8,9 @@ use vulkan_sandbox::camera::Camera;
 use vulkan_sandbox::clock::*;
 use vulkan_sandbox::vulkan;
 
+use vulkan::pipeline::*;
+use vulkan::VertexDesc;
+
 use resources::*;
 use vulkan_sandbox::*;
 
@@ -62,6 +65,41 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut scene = Scene::new();
     let mut master_renderer = MasterRenderer::new(context.clone(), &window)?;
 
+    let default_pass = Pipeline::new(
+        context.device_ref(),
+        &mut master_renderer.descriptor_layout_cache,
+        &master_renderer.renderpass,
+        PipelineInfo {
+            vertexshader: "./data/shaders/default.vert.spv".into(),
+            fragmentshader: "./data/shaders/default.frag.spv".into(),
+            vertex_binding: mesh::Vertex::binding_description(),
+            vertex_attributes: mesh::Vertex::attribute_descriptions(),
+            samples: context.msaa_samples(),
+            extent: master_renderer.swapchain.extent(),
+            subpass: 0,
+            ..Default::default()
+        },
+    )?;
+
+    let default_material = MaterialEffect::new(vec![default_pass]);
+    let mut effects = ResourceCache::new();
+    let default_material =
+        effects.insert::<vulkan::Error, _>("default", || Ok(default_material))?;
+
+    let mut materials = ResourceCache::new();
+
+    let material = materials.insert("default", || {
+        Material::new(
+            context.clone(),
+            &mut master_renderer.descriptor_layout_cache,
+            &mut master_renderer.descriptor_allocator,
+            default_material,
+            MaterialInfo {
+                albedo: "./data/textures/uv.png".into(),
+            },
+        )
+    })?;
+
     let positions = [
         Vec3::new(0.0, 0.0, 0.0),
         Vec3::new(4.0, 1.0, 0.0),
@@ -72,7 +110,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     for position in &positions {
         let position = *position;
         scene.add(Object {
-            material: master_renderer.material().clone(),
+            material,
             mesh: monkey,
             position,
         });
@@ -123,7 +161,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             scene.add(Object {
                 mesh: cube,
-                material: master_renderer.material().clone(),
+                material,
                 position,
             })
         }
@@ -139,8 +177,18 @@ fn main() -> Result<(), Box<dyn Error>> {
             );
         }
 
-        master_renderer.draw(&window, dt.secs(), &camera, &mut scene, &meshes)?;
+        master_renderer.draw(
+            &window,
+            dt.secs(),
+            &camera,
+            &mut scene,
+            &meshes,
+            &materials,
+            &effects,
+        )?;
     }
+
+    std::mem::drop(master_renderer);
 
     Ok(())
 }

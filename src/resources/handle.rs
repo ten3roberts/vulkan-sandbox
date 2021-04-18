@@ -1,8 +1,8 @@
 //! Wraps an arena index to provide a typesafe handle.
 
 use generational_arena::Index;
-use std::hash::Hash;
 use std::marker::PhantomData;
+use std::{hash::Hash, ops::Deref};
 
 pub struct Handle<R>(Index, PhantomData<R>);
 

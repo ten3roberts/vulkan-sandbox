@@ -76,18 +76,16 @@ impl PerFrameData {
 
 pub struct MasterRenderer {
     swapchain_loader: Rc<ash::extensions::khr::Swapchain>,
-    swapchain: Swapchain,
+    pub swapchain: Swapchain,
 
     in_flight_fences: ArrayVec<[vk::Fence; FRAMES_IN_FLIGHT]>,
     image_available_semaphores: ArrayVec<[vk::Semaphore; FRAMES_IN_FLIGHT]>,
     render_finished_semaphores: ArrayVec<[vk::Semaphore; FRAMES_IN_FLIGHT]>,
 
-    renderpass: RenderPass,
+    pub renderpass: RenderPass,
 
-    material: Rc<Material>,
-
-    descriptor_layout_cache: DescriptorLayoutCache,
-    descriptor_allocator: DescriptorAllocator,
+    pub descriptor_layout_cache: DescriptorLayoutCache,
+    pub descriptor_allocator: DescriptorAllocator,
 
     per_frame_data: ArrayVec<[PerFrameData; MAX_FRAMES]>,
 
@@ -178,12 +176,6 @@ impl MasterRenderer {
             })
             .collect::<Result<ArrayVec<[PerFrameData; MAX_FRAMES]>, _>>()?;
 
-        let material_info = MaterialInfo {
-            vertexshader: "data/shaders/default.vert.spv".into(),
-            fragmentshader: "data/shaders/default.frag.spv".into(),
-            albedo: "data/textures/uv.png".into(),
-        };
-
         let mesh_renderer = MeshRenderer::new(
             context.clone(),
             &mut descriptor_layout_cache,
@@ -191,22 +183,10 @@ impl MasterRenderer {
             swapchain.image_count() as usize,
         )?;
 
-        let material = Material::new(
-            context.clone(),
-            &mut descriptor_layout_cache,
-            &mut descriptor_allocator,
-            material_info,
-            swapchain.extent(),
-            &renderpass,
-        )?;
-
-        let material = Rc::new(material);
-
         let master_renderer = MasterRenderer {
             context,
             swapchain_loader,
             swapchain,
-            material,
             in_flight_fences,
             image_available_semaphores,
             render_finished_semaphores,
@@ -305,6 +285,8 @@ impl MasterRenderer {
         camera: &Camera,
         scene: &mut Scene,
         meshes: &ResourceCache<Mesh>,
+        materials: &ResourceCache<Material>,
+        effects: &ResourceCache<MaterialEffect>,
     ) -> Result<(), vulkan::Error> {
         if self.should_resize {
             self.resize(window)?;
@@ -365,8 +347,15 @@ impl MasterRenderer {
             ],
         );
 
-        self.mesh_renderer
-            .draw(&frame.commandbuffer, meshes, camera, image_index, scene)?;
+        self.mesh_renderer.draw(
+            &frame.commandbuffer,
+            meshes,
+            materials,
+            effects,
+            camera,
+            image_index,
+            scene,
+        )?;
 
         frame.commandbuffer.end_renderpass();
         frame.commandbuffer.end()?;
@@ -405,11 +394,6 @@ impl MasterRenderer {
         self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT as usize;
 
         Ok(())
-    }
-
-    /// Get a reference to the master renderer's material.
-    pub fn material(&self) -> &Rc<Material> {
-        &self.material
     }
 
     /// Get a reference to the master renderer's descriptor layout cache.

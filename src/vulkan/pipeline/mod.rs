@@ -2,13 +2,43 @@ use super::{descriptors::DescriptorLayoutCache, Error};
 use super::{renderpass::*, Extent};
 use ash::version::DeviceV1_0;
 use ash::Device;
-use std::io::{Read, Seek};
 use std::{ffi::CString, rc::Rc};
+use std::{fs::File, path::PathBuf};
 
 use ash::vk;
 
 mod shader;
 use shader::*;
+
+pub struct PipelineInfo {
+    pub vertexshader: PathBuf,
+    pub fragmentshader: PathBuf,
+    pub vertex_binding: vk::VertexInputBindingDescription,
+    pub vertex_attributes: &'static [vk::VertexInputAttributeDescription],
+    pub samples: vk::SampleCountFlags,
+    pub extent: Extent,
+    pub subpass: u32,
+    pub polygon_mode: vk::PolygonMode,
+    pub cull_mode: vk::CullModeFlags,
+    pub front_face: vk::FrontFace,
+}
+
+impl Default for PipelineInfo {
+    fn default() -> Self {
+        Self {
+            vertexshader: "".into(),
+            fragmentshader: "".into(),
+            vertex_binding: vk::VertexInputBindingDescription::default(),
+            vertex_attributes: &[],
+            samples: vk::SampleCountFlags::TYPE_1,
+            extent: (0, 0).into(),
+            subpass: 0,
+            polygon_mode: vk::PolygonMode::FILL,
+            cull_mode: vk::CullModeFlags::BACK,
+            front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+        }
+    }
+}
 
 pub struct Pipeline {
     device: Rc<Device>,
@@ -17,26 +47,14 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn new<R>(
+    pub fn new(
         device: Rc<Device>,
         layout_cache: &mut DescriptorLayoutCache,
-        mut vertexshader: R,
-        mut fragmentshader: R,
-        extent: Extent,
         renderpass: &RenderPass,
-        vertex_binding: vk::VertexInputBindingDescription,
-        vertex_attributes: &[vk::VertexInputAttributeDescription],
-        samples: vk::SampleCountFlags,
-    ) -> Result<Self, Error>
-    where
-        R: Read + Seek,
-    {
-        // Read and create the shader modules
-        let mut vert_code = Vec::new();
-        vertexshader.read_to_end(&mut vert_code)?;
-
-        let mut frag_code = Vec::new();
-        fragmentshader.read_to_end(&mut frag_code)?;
+        info: PipelineInfo,
+    ) -> Result<Self, Error> {
+        let mut vertexshader = File::open(info.vertexshader)?;
+        let mut fragmentshader = File::open(info.fragmentshader)?;
 
         let vertexshader = ShaderModule::new(&device, &mut vertexshader)?;
         let fragmentshader = ShaderModule::new(&device, &mut fragmentshader)?;
@@ -58,12 +76,12 @@ impl Pipeline {
                 .build(),
         ];
 
-        let vertex_binding_descriptions = [vertex_binding];
+        let vertex_binding_descriptions = [info.vertex_binding];
 
         // No vertices for now
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_binding_descriptions(&vertex_binding_descriptions)
-            .vertex_attribute_descriptions(&vertex_attributes);
+            .vertex_attribute_descriptions(&info.vertex_attributes);
 
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
@@ -72,15 +90,15 @@ impl Pipeline {
         let viewports = [vk::Viewport {
             x: 0.0f32,
             y: 0.0f32,
-            width: extent.width as _,
-            height: extent.height as _,
+            width: info.extent.width as _,
+            height: info.extent.height as _,
             min_depth: 0.0f32,
             max_depth: 1.0f32,
         }];
 
         let scissors = [vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: extent.into(),
+            extent: info.extent.into(),
         }];
 
         let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
@@ -92,10 +110,10 @@ impl Pipeline {
             .depth_clamp_enable(false)
             // If true: Discard all pixels
             .rasterizer_discard_enable(false)
-            .polygon_mode(vk::PolygonMode::FILL)
+            .polygon_mode(info.polygon_mode)
             .line_width(1.0)
-            .cull_mode(vk::CullModeFlags::NONE)
-            .front_face(vk::FrontFace::CLOCKWISE)
+            .cull_mode(info.cull_mode)
+            .front_face(info.front_face)
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
             .depth_bias_clamp(0.0)
@@ -103,7 +121,7 @@ impl Pipeline {
 
         let multisampling = vk::PipelineMultisampleStateCreateInfo::builder()
             .sample_shading_enable(false)
-            .rasterization_samples(samples)
+            .rasterization_samples(info.samples)
             .min_sample_shading(1.0)
             .alpha_to_coverage_enable(false)
             .alpha_to_one_enable(false);
@@ -152,7 +170,7 @@ impl Pipeline {
             .depth_stencil_state(&depth_stencil)
             .layout(layout)
             .render_pass(renderpass.renderpass())
-            .subpass(0)
+            .subpass(info.subpass)
             .build();
 
         let pipeline = unsafe {

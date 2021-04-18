@@ -5,7 +5,10 @@ use ultraviolet::*;
 use ash::vk;
 use vk::{DescriptorSet, DescriptorSetLayout};
 
-use crate::{resources::ResourceCache, vulkan::descriptors::DescriptorBuilder, Camera, Scene};
+use crate::{
+    resources::ResourceCache, vulkan::descriptors::DescriptorBuilder, Camera, MaterialEffect,
+    Scene,
+};
 
 use super::vulkan;
 use super::Material;
@@ -103,6 +106,8 @@ impl MeshRenderer {
         &mut self,
         commandbuffer: &CommandBuffer,
         meshes: &ResourceCache<Mesh>,
+        materials: &ResourceCache<Material>,
+        effects: &ResourceCache<MaterialEffect>,
         camera: &Camera,
         image_index: u32,
         scene: &Scene,
@@ -132,14 +137,12 @@ impl MeshRenderer {
         )?;
 
         for (i, object) in scene.objects().iter().enumerate() {
-            let material = &object.material;
+            let material = materials.raw(object.material).unwrap();
+            let effect = effects.raw(*material.effect()).unwrap();
+
             let mesh = meshes.raw(object.mesh).unwrap();
-            commandbuffer.bind_pipeline(material.pipeline());
-            commandbuffer.bind_descriptor_sets(
-                material.pipeline(),
-                0,
-                &[material.set(), frame.set],
-            );
+            commandbuffer.bind_pipeline(effect.pass(0));
+            commandbuffer.bind_descriptor_sets(effect.pass(0), 0, &[material.set(), frame.set]);
 
             commandbuffer.bind_vertexbuffers(0, &[&mesh.vertex_buffer()]);
 
