@@ -1,9 +1,9 @@
-use std::{path::PathBuf, rc::Rc};
+use ash::vk;
+use std::rc::Rc;
 
 use super::MaterialEffect;
-use crate::resources::Handle;
+use crate::resources::*;
 use crate::vulkan;
-use ash::vk;
 use vulkan::descriptors::*;
 use vulkan::sampler::*;
 use vulkan::texture::*;
@@ -11,12 +11,13 @@ use vulkan::Error;
 use vulkan::VulkanContext;
 
 pub struct MaterialInfo {
-    pub albedo: PathBuf,
+    pub effect: String,
+    pub albedo: String,
 }
 
 pub struct Material {
     effect: Handle<MaterialEffect>,
-    albedo: Texture,
+    albedo: Handle<Texture>,
     sampler: Sampler,
     set: DescriptorSet,
     set_layout: DescriptorSetLayout,
@@ -28,10 +29,11 @@ impl Material {
         context: Rc<VulkanContext>,
         layout_cache: &mut DescriptorLayoutCache,
         descriptor_allocator: &mut DescriptorAllocator,
+        textures: &ResourceCache<Texture>,
         effect: Handle<MaterialEffect>,
-        info: MaterialInfo,
+        albedo: Handle<Texture>,
     ) -> Result<Self, Error> {
-        let albedo = Texture::load(context.clone(), info.albedo)?;
+        let albedo_raw = textures.raw(albedo).unwrap();
 
         let sampler_info = SamplerInfo {
             address_mode: AddressMode::REPEAT,
@@ -39,7 +41,7 @@ impl Material {
             min_filter: FilterMode::LINEAR,
             unnormalized_coordinates: false,
             anisotropy: 16.0,
-            mip_levels: albedo.mip_levels(),
+            mip_levels: albedo_raw.mip_levels(),
         };
 
         let sampler = Sampler::new(context.clone(), sampler_info)?;
@@ -48,7 +50,7 @@ impl Material {
         let mut set_layout = Default::default();
 
         DescriptorBuilder::new()
-            .bind_combined_image_sampler(0, vk::ShaderStageFlags::FRAGMENT, &albedo, &sampler)
+            .bind_combined_image_sampler(0, vk::ShaderStageFlags::FRAGMENT, &albedo_raw, &sampler)
             .build(
                 context.device(),
                 layout_cache,
@@ -77,8 +79,8 @@ impl Material {
     }
 
     /// Returns a reference to the material albedo texture.
-    pub fn albedo(&self) -> &Texture {
-        &self.albedo
+    pub fn albedo(&self) -> Handle<Texture> {
+        self.albedo
     }
 
     /// Return the material's sampler.

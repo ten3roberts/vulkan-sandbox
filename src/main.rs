@@ -48,22 +48,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut camera = &mut perspective_camera;
 
-    let mut meshes = ResourceCache::new();
-
-    let (document, buffers, _) = gltf::import("./data/models/monkey.gltf")?;
-
-    let monkey = meshes.insert("monkey", || {
-        Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)
-    })?;
-
-    let (document, buffers, _) = gltf::import("./data/models/cube.gltf")?;
-    let cube = meshes.insert("cube", || {
-        Mesh::from_gltf(context.clone(), document.meshes().next().unwrap(), &buffers)
-            .map_err(|e| Box::new(e))
-    })?;
-
     let mut scene = Scene::new();
     let mut master_renderer = MasterRenderer::new(context.clone(), &window)?;
+
+    let mut resources = ResourceManager::new(context.clone());
+
+    let (document, buffers, _) = gltf::import("./data/models/cube.gltf")?;
+    resources.load_mesh("cube", document.meshes().next().unwrap(), &buffers)?;
+
+    let (document, buffers, _) = gltf::import("./data/models/monkey.gltf")?;
+    resources.load_mesh("monkey", document.meshes().next().unwrap(), &buffers)?;
 
     let default_pass = Pipeline::new(
         context.device_ref(),
@@ -81,24 +75,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         },
     )?;
 
-    let default_material = MaterialEffect::new(vec![default_pass]);
-    let mut effects = ResourceCache::new();
-    let default_material =
-        effects.insert::<vulkan::Error, _>("default", || Ok(default_material))?;
+    resources.load_effect("default", vec![default_pass])?;
+    resources.load_texture("uv", "./data/textures/uv.png")?;
 
-    let mut materials = ResourceCache::new();
-
-    let material = materials.insert("default", || {
-        Material::new(
-            context.clone(),
-            &mut master_renderer.descriptor_layout_cache,
-            &mut master_renderer.descriptor_allocator,
-            default_material,
-            MaterialInfo {
-                albedo: "./data/textures/uv.png".into(),
-            },
-        )
-    })?;
+    resources.load_material(
+        "default",
+        MaterialInfo {
+            albedo: "uv".into(),
+            effect: "default".into(),
+        },
+    )?;
 
     let positions = [
         Vec3::new(0.0, 0.0, 0.0),
@@ -110,8 +96,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     for position in &positions {
         let position = *position;
         scene.add(Object {
-            material,
-            mesh: monkey,
+            material: resources.material("default")?,
+            mesh: resources.mesh("monkey")?,
             position,
         });
     }
@@ -160,8 +146,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             // log::info!("Adding: {:?}", position);
 
             scene.add(Object {
-                mesh: cube,
-                material,
+                mesh: resources.mesh("cube")?,
+                material: resources.material("default")?,
                 position,
             })
         }
@@ -177,15 +163,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             );
         }
 
-        master_renderer.draw(
-            &window,
-            dt.secs(),
-            &camera,
-            &mut scene,
-            &meshes,
-            &materials,
-            &effects,
-        )?;
+        master_renderer.draw(&window, dt.secs(), &camera, &mut scene, &resources)?;
     }
 
     std::mem::drop(master_renderer);

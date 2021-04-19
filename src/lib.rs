@@ -1,6 +1,7 @@
 pub mod camera;
 pub mod clock;
 pub mod color;
+pub mod errors;
 pub mod logger;
 pub mod master_renderer;
 pub mod material;
@@ -12,6 +13,7 @@ pub mod scene;
 pub mod vulkan;
 
 pub use camera::*;
+pub use errors::*;
 pub use material::*;
 pub use mesh::*;
 pub use object::*;

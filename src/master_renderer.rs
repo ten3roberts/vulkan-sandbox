@@ -3,7 +3,8 @@ use ash::vk;
 use log::info;
 use ultraviolet::mat::*;
 
-use crate::{mesh_renderer::MeshRenderer, resources::ResourceCache};
+use crate::mesh_renderer::MeshRenderer;
+use crate::resources::*;
 
 use super::*;
 
@@ -284,9 +285,7 @@ impl MasterRenderer {
         _dt: f32,
         camera: &Camera,
         scene: &mut Scene,
-        meshes: &ResourceCache<Mesh>,
-        materials: &ResourceCache<Material>,
-        effects: &ResourceCache<MaterialEffect>,
+        resources: &ResourceManager,
     ) -> Result<(), vulkan::Error> {
         if self.should_resize {
             self.resize(window)?;
@@ -347,15 +346,8 @@ impl MasterRenderer {
             ],
         );
 
-        self.mesh_renderer.draw(
-            &frame.commandbuffer,
-            meshes,
-            materials,
-            effects,
-            camera,
-            image_index,
-            scene,
-        )?;
+        self.mesh_renderer
+            .draw(&frame.commandbuffer, resources, camera, image_index, scene)?;
 
         frame.commandbuffer.end_renderpass();
         frame.commandbuffer.end()?;

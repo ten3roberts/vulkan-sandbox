@@ -3,10 +3,10 @@ use gltf::{buffer, Semantic};
 use std::iter::repeat;
 use std::mem;
 use std::rc::Rc;
-use thiserror::Error;
 use ultraviolet::{Vec2, Vec3};
 
 use crate::vulkan::{self, VulkanContext};
+use crate::Error;
 use vulkan::{Buffer, BufferType, BufferUsage};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,14 +62,6 @@ impl vulkan::VertexDesc for Vertex {
     fn attribute_descriptions() -> &'static [vk::VertexInputAttributeDescription] {
         ATTRIBUTE_DESCRIPTIONS
     }
-}
-
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("{0}")]
-    VulkanError(#[from] vulkan::Error),
-    #[error("Unable to load resource using sparse buffer accessor")]
-    SparseAccessor,
 }
 
 pub struct Mesh {
