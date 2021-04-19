@@ -10,4 +10,7 @@ pub enum Error {
     SparseAccessor,
     #[error("{0}")]
     ResourceError(#[from] resources::Error),
+
+    #[error("GLTF import error '{0}'")]
+    GLTFImport(#[from] gltf::Error),
 }

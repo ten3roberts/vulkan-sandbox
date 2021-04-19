@@ -1,6 +1,7 @@
 pub mod camera;
 pub mod clock;
 pub mod color;
+pub mod document;
 pub mod errors;
 pub mod logger;
 pub mod master_renderer;

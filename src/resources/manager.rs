@@ -3,6 +3,7 @@ use std::{path::Path, rc::Rc};
 use super::*;
 use crate::{material::*, vulkan::Pipeline, Mesh};
 
+use crate::document::Document;
 use crate::resources;
 use crate::vulkan;
 use crate::Error;
@@ -18,6 +19,7 @@ pub struct ResourceManager {
     materials: ResourceCache<Material>,
     effects: ResourceCache<MaterialEffect>,
     meshes: ResourceCache<Mesh>,
+    documents: ResourceCache<Document>,
 }
 
 impl ResourceManager {
@@ -29,6 +31,7 @@ impl ResourceManager {
         let materials = ResourceCache::new();
         let effects = ResourceCache::new();
         let meshes = ResourceCache::new();
+        let documents = ResourceCache::new();
 
         Self {
             context,
@@ -38,6 +41,7 @@ impl ResourceManager {
             materials,
             effects,
             meshes,
+            documents,
         }
     }
 
@@ -71,6 +75,14 @@ impl ResourceManager {
         S: AsRef<str> + Into<String>,
     {
         self.meshes.get(name)
+    }
+
+    /// Get a document by name.
+    pub fn document<S>(&self, name: S) -> Result<Handle<Document>, resources::Error>
+    where
+        S: AsRef<str> + Into<String>,
+    {
+        self.documents.get(name)
     }
 
     pub fn load_material<S>(
@@ -139,9 +151,41 @@ impl ResourceManager {
     {
         let context = self.context.clone();
 
+        log::debug!("Loading mesh: {}", name.as_ref());
+
         self.meshes
             .insert(name, || Mesh::from_gltf(context, mesh, buffers))
             .map_err(|e| e.into())
+    }
+
+    /// Loads a document in gltf format from disk. Prefixes all names meshes by the provided
+    /// document name
+    /// along with '::' and inserts them into storage. E.g; 'map::Ground'
+    pub fn load_document<P, S>(&mut self, name: S, path: P) -> Result<Handle<Document>, Error>
+    where
+        P: AsRef<Path>,
+        S: AsRef<str> + Into<String>,
+    {
+        if let Ok(document) = self.document(name.as_ref()) {
+            return Ok(document);
+        }
+
+        let (document, buffers, _images) = gltf::import(path)?;
+
+        let name = name.into();
+
+        let prefix = name.clone() + "::";
+        let meshes = document
+            .meshes()
+            .filter_map(|mesh| match mesh.name() {
+                Some(name) => Some((mesh, name)),
+                None => None,
+            })
+            .map(|(mesh, name)| self.load_mesh(prefix.clone() + name, mesh, &buffers))
+            .collect::<Result<_, _>>()?;
+
+        self.documents
+            .insert(name, || Ok(Document::from_gltf(document, meshes)))
     }
 
     /// Get a reference to the resource manager's textures.

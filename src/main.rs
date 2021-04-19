@@ -53,11 +53,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut resources = ResourceManager::new(context.clone());
 
-    let (document, buffers, _) = gltf::import("./data/models/cube.gltf")?;
-    resources.load_mesh("cube", document.meshes().next().unwrap(), &buffers)?;
-
-    let (document, buffers, _) = gltf::import("./data/models/monkey.gltf")?;
-    resources.load_mesh("monkey", document.meshes().next().unwrap(), &buffers)?;
+    resources.load_document("cube", "./data/models/cube.gltf")?;
+    resources.load_document("monkey", "./data/models/monkey.gltf")?;
 
     let default_pass = Pipeline::new(
         context.device_ref(),
@@ -97,7 +94,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let position = *position;
         scene.add(Object {
             material: resources.material("default")?,
-            mesh: resources.mesh("monkey")?,
+            mesh: resources.mesh("monkey::Suzanne")?,
             position,
         });
     }
@@ -146,7 +143,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             // log::info!("Adding: {:?}", position);
 
             scene.add(Object {
-                mesh: resources.mesh("cube")?,
+                mesh: resources.mesh("cube::Cube")?,
                 material: resources.material("default")?,
                 position,
             })
